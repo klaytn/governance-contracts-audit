@@ -1,20 +1,30 @@
-# Klaytn governance contracts (WIP)
+# Klaytn governance contracts
 
 ![scope.png](./scope.png)
 
 ## Audit scope
 
-- CnStakingV2
-- StakingTracker
-- Voting
-- GovParam
+- CnStakingV2.sol
+- GovParam.sol
+- ICnStakingV2.sol
+- IGovParam.sol
+- IStakingTracker.sol
+- IVoting.sol
+- StakingTracker.sol
+- Voting.sol
 
 ## Not scope
 
-- legacy/AddressBook
-- legacy/CnStakingContract (a.k.a. CnStakingV1)
-- legacy/KlaytnReward
-- legacy/SafeMath
+- legacy/\*.sol
+- mock/\*.sol
+
+## How to test
+
+```
+npx hardhat compile
+npx hardhat test
+npx hardhat coverage
+```
 
 ## Resources
 

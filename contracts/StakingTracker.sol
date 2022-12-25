@@ -17,9 +17,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./IStakingTracker.sol";
 
-contract StakingTracker is IStakingTracker {
+contract StakingTracker is IStakingTracker, Ownable {
 
     struct Tracker {
         // Tracked block range.
@@ -42,19 +43,14 @@ contract StakingTracker is IStakingTracker {
         uint256 eligibleNodes;
     }
 
-    event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
-
-    // Contract owner
-    address public owner;
-
     // Store tracker objects
     mapping(uint256 => Tracker) private trackers; // indexed by trackerId
     uint256[] private allTrackerIds;  // append-only list of trackerIds
     uint256[] private liveTrackerIds; // trackerIds with block.number < trackEnd. Not in order.
 
     // 1-to-1 mapping between nodeId and voter account
-    mapping(address => address) private nodeIdToVoter;
-    mapping(address => address) private voterToNodeId;
+    mapping(address => address) public override nodeIdToVoter;
+    mapping(address => address) public override voterToNodeId;
 
     // Constants
     function CONTRACT_TYPE()
@@ -66,27 +62,7 @@ contract StakingTracker is IStakingTracker {
     function MIN_STAKE()
         public view virtual override returns(uint256) { return 5000000 ether; }
 
-    // Modifiers
-
-    modifier onlyOwner() {
-        require(owner == msg.sender, "Caller is not the owner");
-        _;
-    }
-
     // Mutators
-
-    /// @dev Construct the contract with initial values
-    constructor(address _owner) {
-        owner = _owner;
-    }
-
-    /// @dev Transfer ownership to other address
-    /// Only allowed to the contract owner.
-    function transferOwnership(address newOwner) external virtual onlyOwner {
-        address oldOwner = owner;
-        owner = newOwner;
-        emit OwnershipTransferred(oldOwner, newOwner);
-    }
 
     /// @dev Creates a new Tracker and populate initial values from AddressBook
     /// Only allowed to the contract owner.
@@ -104,6 +80,7 @@ contract StakingTracker is IStakingTracker {
         populateFromAddressBook(trackerId);
         calcAllVotes(trackerId);
 
+        emit CreateTracker(trackerId, trackStart, trackEnd, tracker.nodeIds);
         return trackerId;
     }
 
@@ -120,19 +97,21 @@ contract StakingTracker is IStakingTracker {
             address n = nodeIds[i];
             address s = stakingContracts[i];
             address r = rewardAddrs[i];
+            uint256 balance = getStakingBalance(s);
+
             if (tracker.rewardToNodeId[r] == address(0)) { // fresh rewardAddr
                 tracker.nodeIds.push(n);
                 tracker.rewardToNodeId[r] = n;
 
                 tracker.stakingToNodeId[s] = n;
-                tracker.stakingBalances[s] = s.balance;
-                tracker.nodeBalances[n] = s.balance;
+                tracker.stakingBalances[s] = balance;
+                tracker.nodeBalances[n] = balance;
             } else { // previously appeared rewardAddr
                 n = tracker.rewardToNodeId[r]; // use representative nodeId
 
                 tracker.stakingToNodeId[s] = n;
-                tracker.stakingBalances[s] = s.balance;
-                tracker.nodeBalances[n] += s.balance;
+                tracker.stakingBalances[s] = balance;
+                tracker.nodeBalances[n] += balance;
             }
         }
     }
@@ -190,7 +169,7 @@ contract StakingTracker is IStakingTracker {
 
         // Update balance
         uint256 oldBalance = tracker.stakingBalances[staking];
-        uint256 newBalance = address(staking).balance;
+        uint256 newBalance = getStakingBalance(staking);
         tracker.stakingBalances[staking] = newBalance;
         tracker.nodeBalances[nodeId] -= oldBalance;
         tracker.nodeBalances[nodeId] += newBalance;
@@ -219,8 +198,8 @@ contract StakingTracker is IStakingTracker {
     /// this function reverts.
     function refreshVoter(address staking) external override {
         address nodeId = resolveStakingFromAddressBook(staking);
-        require(nodeId != address(0), "not a staking contract");
-        require(ICnStakingV2(staking).VERSION() >= 2, "Invalid CnStaking contract");
+        require(nodeId != address(0), "Not a staking contract");
+        require(isCnStakingV2(staking), "Invalid CnStaking contract");
 
         // Unlink existing two-way mapping
         address oldVoter = nodeIdToVoter[nodeId];
@@ -230,7 +209,7 @@ contract StakingTracker is IStakingTracker {
         }
 
         // Create new mapping
-        address newVoter = ICnStakingV2(staking).getVoterAddress();
+        address newVoter = ICnStakingV2(staking).voterAddress();
         if (newVoter != address(0)) {
             require(voterToNodeId[newVoter] == address(0), "Voter address already taken");
             voterToNodeId[newVoter] = nodeId;
@@ -274,6 +253,44 @@ contract StakingTracker is IStakingTracker {
             IAddressBook(ADDRESS_BOOK_ADDRESS()).getAllAddressInfo();
         require(nodeIds.length == stakingContracts.length &&
                 nodeIds.length == rewardAddrs.length, "Invalid data");
+    }
+
+    /// @dev Test if the given contract is a CnStakingV2 instance
+    /// Does not check if the contract is registered in AddressBook.
+    function isCnStakingV2(address staking) public view returns(bool) {
+        bool ok;
+        bytes memory out;
+
+        (ok, out) = staking.staticcall(abi.encodeWithSignature("CONTRACT_TYPE()"));
+        if (!ok || out.length == 0) {
+            return false;
+        }
+        string memory _type = abi.decode(out, (string));
+        if (keccak256(bytes(_type)) != keccak256(bytes("CnStakingContract"))) {
+            return false;
+        }
+
+        (ok, out) = staking.staticcall(abi.encodeWithSignature("VERSION()"));
+        if (!ok || out.length == 0) {
+            return false;
+        }
+        uint256 _version = abi.decode(out, (uint256));
+        if (_version < 2) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// @dev Effective balance of a CnStakingV2 contract.
+    /// The effective balance is the contract account balance except unstaking amount.
+    function getStakingBalance(address staking) public view virtual returns(uint256) {
+        if (isCnStakingV2(staking)) {
+            uint256 accountBalance = staking.balance;
+            uint256 unstaking = ICnStakingV2(staking).unstaking();
+            return (accountBalance - unstaking);
+        }
+        return 0;
     }
 
     /// @dev Determine if a node is eligible for voting with respect to given tracker.
@@ -325,11 +342,11 @@ contract StakingTracker is IStakingTracker {
         uint256 eligibleNodes)
     {
         Tracker storage tracker = trackers[trackerId];
-        trackStart = tracker.trackStart;
-        trackEnd = tracker.trackEnd;
-        numNodes = tracker.nodeIds.length;
-        totalVotes = tracker.totalVotes;
-        eligibleNodes = tracker.eligibleNodes;
+        return (tracker.trackStart,
+                tracker.trackEnd,
+                tracker.nodeIds.length,
+                tracker.totalVotes,
+                tracker.eligibleNodes);
     }
 
     function getTrackedNode(uint256 trackerId, address nodeId) external view override returns(
@@ -337,8 +354,8 @@ contract StakingTracker is IStakingTracker {
         uint256 nodeVotes)
     {
         Tracker storage tracker = trackers[trackerId];
-        nodeBalance = tracker.nodeBalances[nodeId];
-        nodeVotes = tracker.nodeVotes[nodeId];
+        return (tracker.nodeBalances[nodeId],
+                tracker.nodeVotes[nodeId]);
     }
 
     function getAllTrackedNodes(uint256 trackerId) external view override returns(
@@ -357,20 +374,14 @@ contract StakingTracker is IStakingTracker {
             nodeBalances[i] = tracker.nodeBalances[nodeId];
             nodeVotes[i] = tracker.nodeVotes[nodeId];
         }
+        return (nodeIds, nodeBalances, nodeVotes);
     }
 
-    function getNodeFromStaking(uint256 trackerId, address staking)
-        external view override returns(address) {
+    function stakingToNodeId(uint256 trackerId, address staking)
+        external view override returns(address)
+    {
         Tracker storage tracker = trackers[trackerId];
         return tracker.stakingToNodeId[staking];
-    }
-    function getNodeFromVoter(address voter)
-        external view override returns(address) {
-        return voterToNodeId[voter];
-    }
-    function getVoterFromNode(address nodeId)
-        external view override returns(address) {
-        return nodeIdToVoter[nodeId];
     }
 }
 
@@ -380,6 +391,6 @@ interface IAddressBook {
 }
 
 interface ICnStakingV2 {
-    function getVoterAddress() external view returns(address);
-    function VERSION() external view returns(uint256);
+    function voterAddress() external view returns(address);
+    function unstaking() external view returns(uint256);
 }

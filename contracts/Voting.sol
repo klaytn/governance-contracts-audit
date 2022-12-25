@@ -18,6 +18,7 @@
 pragma solidity ^0.8.0;
 
 import "./IVoting.sol";
+import "./StakingTracker.sol";
 
 contract Voting is IVoting {
     // Types
@@ -41,12 +42,34 @@ contract Voting is IVoting {
         bool executed;         // true if successfully execute()d
 
         // Vote counting
+        address stakingTracker;
         uint256 trackerId;
         uint256 totalYes;
         uint256 totalNo;
         uint256 totalAbstain;
+        uint256 quorumCount;
+        uint256 quorumPower;
         address[] voters;
         mapping(address => Receipt) receipts;
+    }
+
+    struct AccessRule {
+        // True if the secretary can propose()
+        bool secretaryPropose;
+        // True if any eligible voter at the time of the submission can propose() a proposal
+        bool voterPropose;
+
+        // True if the secretary can queue() and execute()
+        bool secretaryExecute;
+        // True if any eligible voter of a given proposal can queue() and execute() the proposal.
+        bool voterExecute;
+    }
+
+    struct TimingRule {
+        uint256 minVotingDelay;
+        uint256 maxVotingDelay;
+        uint256 minVotingPeriod;
+        uint256 maxVotingPeriod;
     }
 
     // States
@@ -54,58 +77,99 @@ contract Voting is IVoting {
     mapping(uint256 => Proposal) private proposals;
     uint256 public nextProposalId;
 
-    /// @dev The address of StakingTracker
-    address public stakingTracker;
+    /// @dev The address of StakingTracker.
+    /// Intended for internal use only, but is public for debugging purposes.
+    /// This address is used by newly created proposals.
+    address public override stakingTracker;
 
-    /// @dev The address of secretariat
-    /// Secretariat has the permission to propose, queue, and execute proposals.
-    /// If the secretariat is empty, any eligible voter at the time of the submission
-    /// can propose proposals. Also, any eligible voter of a proposal can queue
-    /// and execute the proposals.
-    address public override secretariat;
+    /// @dev The address of the Voting secretary.
+    /// The secretary can be zero address to signify the absence of the secretary.
+    address public override secretary;
 
-    constructor(address _tracker, address _secretariat) {
-        nextProposalId = 1;
-        stakingTracker = _tracker;
-        secretariat = _secretariat;
-    }
+    /// @dev The access control rule of some important functions.
+    AccessRule public override accessRule;
+    /// @dev The timing rules of proposal schedule
+    TimingRule public override timingRule;
 
-    /// @dev The given proposal must exist
-    function checkProposal(uint256 proposalId) internal view {
-        require(proposals[proposalId].proposer != address(0), "No such proposal");
-    }
+    uint256 public constant DAY = 86400;
+    /// @dev Grace period to queue() passed proposals in block numbers
+    uint256 public override queueTimeout = 7*DAY;
+    /// @dev A minimum delay before a queued transaction can be executed in block numbers
+    uint256 public override execDelay = 2*DAY;
+    /// @dev Grace period to execute() queued proposals since `execDelay` in block numbers
+    uint256 public override execTimeout = 7*DAY;
 
-    /// @dev Check for propose, queue and execute permission
-    /// If secretariat is appointed, the sender must be the secretariat.
-    /// Otherwise, the sender must be an eligible voter.
-    function checkPermission(uint256 proposalId) internal view {
-        if (secretariat != address(0)) {
-            require(msg.sender == secretariat, "Not the secretariat");
+    constructor(address _tracker, address _secretary) {
+        if (_tracker != address(0)) {
+            stakingTracker = _tracker;
         } else {
+            // This contract becomes the owner
+            stakingTracker = address(new StakingTracker());
+        }
+
+        secretary = _secretary;
+
+        nextProposalId = 1;
+
+        // Initial rules
+        accessRule.secretaryPropose = true;
+        accessRule.voterPropose     = false;
+        accessRule.secretaryExecute = true;
+        accessRule.voterExecute     = false;
+        validateAccessRule();
+
+        timingRule.minVotingDelay  = 1*DAY;
+        timingRule.maxVotingDelay  = 28*DAY;
+        timingRule.minVotingPeriod = 1*DAY;
+        timingRule.maxVotingPeriod = 28*DAY;
+        validateTimingRule();
+    }
+
+    /// @dev Check for propose() access permission
+    function checkProposeAccess(uint256 proposalId) internal view {
+        checkAccess(proposalId, accessRule.secretaryPropose, accessRule.voterPropose);
+    }
+    /// @dev Check for queue() and execute() access permission
+    function checkExecuteAccess(uint256 proposalId) internal view {
+        checkAccess(proposalId, accessRule.secretaryExecute, accessRule.voterExecute);
+    }
+
+    /// @dev Check that sender has access to a certain operation for the given proposal.
+    ///
+    /// @param proposalId       The proposal ID which the operation changes
+    /// @param secretaryAccess  True if the operation is allowed to the secretary
+    /// @param voterAccess      True if the operation is allowed to any voter of the proposal
+    function checkAccess(uint256 proposalId, bool secretaryAccess, bool voterAccess)
+    internal view {
+        // if ( sA &&  vA), msg.sender must be the secretary or a voter.
+        //   Note that in this case, the revert message would be
+        //   "Not a registered voter" or "Not eligible to vote".
+        // if ( sA && !vA), msg.sender must be the secretary.
+        // if (!sa &&  vA), msg.sender must be a voter.
+        if (secretaryAccess && msg.sender == secretary) {
+            return;
+        } else if (voterAccess) {
+            // check that the sender is an eligible voter of the given proposal.
             (address nodeId, uint256 votes) = getVotes(proposalId, msg.sender);
             require(nodeId != address(0), "Not a registered voter");
             require(votes > 0, "Not eligible to vote");
+        } else {
+            revert("Not the secretary");
         }
     }
 
-    /// @dev The given proposal must be in the speciefied state
-    modifier proposalAt(uint256 proposalId, ProposalState s) {
-        checkProposal(proposalId);
-        require(state(proposalId) == s, "Not allowed in current state");
-        _;
-    }
+    // Modifiers
 
-    /// @dev Sender must have execution right to the given proposal
+    /// @dev Sender must have execute permission of the proposal
     modifier onlyExecutor(uint256 proposalId) {
-        checkProposal(proposalId);
-        checkPermission(proposalId);
+        checkExecuteAccess(proposalId);
         _;
     }
 
-    /// @dev Sender must be the proposer of the given proposal
-    modifier onlyProposerOf(uint256 proposalId) {
-        checkProposal(proposalId);
-        require(proposals[proposalId].proposer == msg.sender, "Not the proposer");
+    /// @dev The proposal must exist and is in the speciefied state
+    modifier onlyState(uint256 proposalId, ProposalState s) {
+        require(proposals[proposalId].proposer != address(0), "No such proposal");
+        require(state(proposalId) == s, "Not allowed in current state");
         _;
     }
 
@@ -115,60 +179,71 @@ contract Voting is IVoting {
         _;
     }
 
+    /// @dev Sender must be this contract or the secretary.
+    modifier onlyGovernanceOrSecretary() {
+        require(msg.sender == address(this) || msg.sender == secretary,
+                "Not a governance transaction or secretary");
+        _;
+    }
+
     // Mutators
 
     /// @dev Create a Proposal
-    /// If secretariat is null, any GC with at least 1 vote can propose.
-    /// Otherwise only secretariat can propose.
-    /// Default timing parameters are used.
+    /// @param description   Proposal text
+    /// @param targets       List of transaction target addresses
+    /// @param values        List of KLAY values to send along with transactions
+    /// @param calldatas     List of transaction calldatas
+    /// @param votingDelay   Delay from proposal submission to voting start in block numbers
+    /// @param votingPeriod  Duration of the voting in block numbers
     function propose(
         string memory description,
         address[] memory targets,
         uint256[] memory values,
-        bytes[] memory calldatas) external override returns (uint256 proposalId) {
+        bytes[] memory calldatas,
+        uint256 votingDelay,
+        uint256 votingPeriod
+    ) external override returns (uint256 proposalId) {
 
         require(targets.length == values.length &&
                 targets.length == calldatas.length, "Invalid actions");
+        require(timingRule.minVotingDelay <= votingDelay &&
+                votingDelay <= timingRule.maxVotingDelay, "Invalid votingDelay");
+        require(timingRule.minVotingPeriod <= votingPeriod &&
+                votingPeriod <= timingRule.maxVotingPeriod, "Invalid votingPeriod");
 
         proposalId = nextProposalId;
         nextProposalId ++;
         Proposal storage p = proposals[proposalId];
 
-        p.proposer = msg.sender;
+        p.proposer    = msg.sender;
         p.description = description;
-        p.targets = targets;
-        p.values = values;
-        p.calldatas = calldatas;
+        p.targets     = targets;
+        p.values      = values;
+        p.calldatas   = calldatas;
 
-        p.voteStart = block.number + votingDelay();
-        p.voteEnd = p.voteStart + votingPeriod();
-        p.queueDeadline = p.voteEnd + queueTimeout();
+        p.voteStart     = block.number + votingDelay;
+        p.voteEnd       = p.voteStart + votingPeriod;
+        p.queueDeadline = p.voteEnd + queueTimeout;
 
         // Finalize voter list and track balance changes during the preparation period
-        p.trackerId = IStakingTracker(stakingTracker).createTracker(
-            block.number, p.voteStart);
+        p.stakingTracker = stakingTracker;
+        p.trackerId = IStakingTracker(p.stakingTracker).createTracker(block.number, p.voteStart);
 
         // Permission check must be done here since it requires trackerId.
-        checkPermission(proposalId);
+        checkProposeAccess(proposalId);
 
         emit ProposalCreated(proposalId, p.proposer,
                              p.targets, p.values, new string[](p.targets.length), p.calldatas,
-                             0, 0, p.description);
+                             p.voteStart, p.voteEnd, p.description);
     }
 
     /// @dev Cancel a proposal
     /// The proposal must be in one of Pending, Active, Passed, or Queued state.
     /// Only the proposer of the proposal can cancel the proposal.
     function cancel(uint256 proposalId) external override
-    onlyProposerOf(proposalId) {
+    onlyState(proposalId, ProposalState.Pending) {
         Proposal storage p = proposals[proposalId];
-
-        ProposalState s = state(proposalId);
-        require(s == ProposalState.Pending ||
-                s == ProposalState.Active ||
-                s == ProposalState.Passed ||
-                s == ProposalState.Queued,
-                "Not allowed in current state");
+        require(p.proposer == msg.sender, "Not the proposer");
 
         p.canceled = true;
         emit ProposalCanceled(proposalId);
@@ -179,8 +254,16 @@ contract Voting is IVoting {
     /// A same voter can call this function again to change choice.
     /// choice must be one of VoteChoice.
     function castVote(uint256 proposalId, uint8 choice) external override
-    proposalAt(proposalId, ProposalState.Active) {
+    onlyState(proposalId, ProposalState.Active) {
         Proposal storage p = proposals[proposalId];
+
+        // cache quorums to (1) save gas for checkQuorum,
+        // (2) prevent any unintended outcome of updating stakingTracker address.
+        if (p.quorumCount == 0) {
+            (uint256 quorumCount, uint256 quorumPower) = getQuorum(proposalId);
+            p.quorumCount = quorumCount;
+            p.quorumPower = quorumPower;
+        }
 
         (address nodeId, uint256 votes) = getVotes(proposalId, msg.sender);
         require(nodeId != address(0), "Not a registered voter");
@@ -190,20 +273,13 @@ contract Voting is IVoting {
                 choice == uint8(VoteChoice.No) ||
                 choice == uint8(VoteChoice.Abstain), "Not a valid choice");
 
-        if (p.receipts[nodeId].hasVoted) {
-            // Changing vote; undo tally
-            uint8 oldChoice = p.receipts[nodeId].choice;
-            uint256 oldVotes = p.receipts[nodeId].votes;
-            decrementTally(proposalId, oldChoice, oldVotes);
-        } else {
-            // First time voting for this proposal
-            p.voters.push(nodeId);
-        }
-        // Record new vote
+        require(!p.receipts[nodeId].hasVoted, "Already voted");
         p.receipts[nodeId].hasVoted = true;
-        p.receipts[nodeId].choice = choice;
-        p.receipts[nodeId].votes = votes;
+        p.receipts[nodeId].choice   = choice;
+        p.receipts[nodeId].votes    = votes;
+
         incrementTally(proposalId, choice, votes);
+        p.voters.push(nodeId);
 
         emit VoteCast(nodeId, proposalId, choice, votes, "");
     }
@@ -219,31 +295,21 @@ contract Voting is IVoting {
         }
     }
 
-    function decrementTally(uint256 proposalId, uint8 choice, uint256 votes) private {
-        Proposal storage p = proposals[proposalId];
-        if (choice == uint8(VoteChoice.Yes)) {
-            p.totalYes -= votes;
-        } else if (choice == uint8(VoteChoice.No)) {
-            p.totalNo -= votes;
-        } else if (choice == uint8(VoteChoice.Abstain)) {
-            p.totalAbstain -= votes;
-        }
-    }
-
     /// @dev Queue a passed proposal
     /// The proposal must be in Passed state
     /// Current block must be before `queueDeadline` of this proposal
-    /// If secretariat is null, any GC with at least 1 vote can queue.
-    /// Otherwise only secretariat can queue.
+    /// If secretary is null, any GC with at least 1 vote can queue.
+    /// Otherwise only secretary can queue.
     function queue(uint256 proposalId) external override
-    proposalAt(proposalId, ProposalState.Passed)
+    onlyState(proposalId, ProposalState.Passed)
     onlyExecutor(proposalId) {
+
         Proposal storage p = proposals[proposalId];
         require(p.targets.length > 0, "Proposal has no action");
 
-        p.eta = block.number + execDelay();
-        p.execDeadline = p.eta + execTimeout();
-        p.queued = true;
+        p.eta          = block.number + execDelay;
+        p.execDeadline = p.eta + execTimeout;
+        p.queued       = true;
 
         emit ProposalQueued(proposalId, p.eta);
     }
@@ -251,12 +317,14 @@ contract Voting is IVoting {
     /// @dev Execute a queued proposal
     /// The proposal must be in Queued state
     /// Current block must be after `eta` and before `execDeadline` of this proposal
-    /// If secretariat is null, any GC with at least 1 vote can execute.
-    /// Otherwise only secretariat can execute.
+    /// If secretary is null, any GC with at least 1 vote can execute.
+    /// Otherwise only secretary can execute.
     function execute(uint256 proposalId) external payable override
-    proposalAt(proposalId, ProposalState.Queued)
+    onlyState(proposalId, ProposalState.Queued)
     onlyExecutor(proposalId) {
+
         Proposal storage p = proposals[proposalId];
+        require(block.number >= p.eta, "Not yet executable");
 
         for (uint256 i = 0; i < p.targets.length; i++) {
             (bool success, bytes memory result) =
@@ -287,30 +355,73 @@ contract Voting is IVoting {
         }
     }
 
-    /// @dev Set secretariat account
+    // Governance functions
+
+    /// @dev Update the StakingTracker address
+    /// Should not be called if there is an active proposal
+    function updateStakingTracker(address newAddr) public override onlyGovernance {
+        address oldAddr = stakingTracker;
+        stakingTracker = newAddr;
+        emit UpdateStakingTracker(oldAddr, newAddr);
+    }
+
+    /// @dev Update the secretary account
     /// Must be called by address(this), i.e. via governance proposal.
-    function updateSecretariat(address newAddr) public override onlyGovernance {
-        address oldAddr = secretariat;
-        secretariat = newAddr;
-        emit UpdateSecretariat(oldAddr, newAddr);
+    function updateSecretary(address newAddr) public override onlyGovernance {
+        address oldAddr = secretary;
+        secretary = newAddr;
+        emit UpdateSecretary(oldAddr, newAddr);
+    }
+
+    /// @dev Update the access rule
+    function updateAccessRule(
+        bool secretaryPropose, bool voterPropose,
+        bool secretaryExecute, bool voterExecute)
+    public override onlyGovernanceOrSecretary {
+        AccessRule storage ar = accessRule;
+        ar.secretaryPropose = secretaryPropose;
+        ar.voterPropose     = voterPropose;
+        ar.secretaryExecute = secretaryExecute;
+        ar.voterExecute     = voterExecute;
+
+        validateAccessRule();
+
+        emit UpdateAccessRule(ar.secretaryPropose, ar.voterPropose,
+                              ar.secretaryExecute, ar.voterExecute);
+    }
+
+    function validateAccessRule() internal view {
+        AccessRule storage ar = accessRule;
+        require(ar.secretaryPropose || ar.voterPropose, "No propose access");
+        require(ar.secretaryExecute || ar.voterExecute, "No execute access");
+    }
+
+    /// @dev Update the timing rule
+    function updateTimingRule(
+        uint256 minVotingDelay,  uint256 maxVotingDelay,
+        uint256 minVotingPeriod, uint256 maxVotingPeriod)
+    public override onlyGovernanceOrSecretary {
+        TimingRule storage tr = timingRule;
+        tr.minVotingDelay  = minVotingDelay;
+        tr.maxVotingDelay  = maxVotingDelay;
+        tr.minVotingPeriod = minVotingPeriod;
+        tr.maxVotingPeriod = maxVotingPeriod;
+
+        validateTimingRule();
+
+        emit UpdateTimingRule(tr.minVotingDelay,   tr.maxVotingDelay,
+                              tr. minVotingPeriod, tr.maxVotingPeriod);
+    }
+
+    function validateTimingRule() internal view {
+        TimingRule storage tr = timingRule;
+        require(tr.minVotingDelay  > 0, "Invalid timing");
+        require(tr.minVotingPeriod > 0, "Invalid timing");
+        require(tr.minVotingDelay  <= tr.maxVotingDelay, "Invalid timing");
+        require(tr.minVotingPeriod <= tr.maxVotingPeriod, "Invalid timing");
     }
 
     // Getters
-
-    /// @dev Delay from proposal submission to voting start in block numbers
-    function votingDelay() public pure virtual override returns(uint256) { return 604800; }
-
-    /// @dev Duration of the voting in block numbers
-    function votingPeriod() public pure virtual override returns(uint256) { return 604800; }
-
-    /// @dev Grace period to queue() passed proposals in block numbers
-    function queueTimeout() public pure virtual override returns(uint256) { return 604800; }
-
-    /// @dev A minimum delay before a queued transaction can be executed in block numbers
-    function execDelay() public pure virtual override returns(uint256) { return 172800; }
-
-    /// @dev Grace period to execute() queued proposals since `execDelay` in block numbers
-    function execTimeout() public pure virtual override returns(uint256) { return 604800; }
 
     /// @dev The id of the last created proposal
     /// Retrurns 0 if there is no proposal.
@@ -335,7 +446,7 @@ contract Voting is IVoting {
         }
 
         if (!p.queued) {
-            if (block.number <= p.queueDeadline) {
+            if (block.number <= p.queueDeadline || p.targets.length == 0) {
                 return ProposalState.Passed;
             } else {
                 return ProposalState.Expired;
@@ -353,9 +464,34 @@ contract Voting is IVoting {
     /// Note that its return value represents the current voting status,
     /// and is subject to change until the voting ends.
     function checkQuorum(uint256 proposalId) public view override returns(bool) {
-        // TODO: check quorum
         Proposal storage p = proposals[proposalId];
-        return p.totalYes > 0;
+
+        (uint256 quorumCount, uint256 quorumPower) = getQuorum(proposalId);
+        uint256 totalVotes = p.totalYes + p.totalNo + p.totalAbstain;
+        uint256 quorumYes = p.totalNo + 1; // strictly more than No votes
+
+        bool countPass = (p.voters.length >= quorumCount);
+        bool powerPass = (totalVotes      >= quorumPower);
+        bool approval  = (p.totalYes      >= quorumYes);
+
+        return ((countPass || powerPass) && approval);
+    }
+
+    /// @dev Calculate count and power quorums for a proposal
+    function getQuorum(uint256 proposalId) private view returns(
+        uint256 quorumCount, uint256 quorumPower) {
+
+        Proposal storage p = proposals[proposalId];
+        if (p.quorumCount != 0) { // return cached numbers
+            return (p.quorumCount, p.quorumPower);
+        }
+
+        ( , , , uint256 totalVotes, uint256 eligibleNodes) =
+            IStakingTracker(p.stakingTracker).getTrackerSummary(p.trackerId);
+
+        quorumCount = (eligibleNodes + 2) / 3; // more than or equal to 1/3 of all GC members
+        quorumPower = (totalVotes + 2) / 3; // more than or equal to 1/3 of all voting powers
+        return (quorumCount, quorumPower);
     }
 
     /// @dev Resolve the voter account into its nodeId and voting powers
@@ -370,8 +506,8 @@ contract Voting is IVoting {
         address nodeId, uint256 votes) {
         Proposal storage p = proposals[proposalId];
 
-        nodeId = IStakingTracker(stakingTracker).getNodeFromVoter(voter);
-        ( , votes) = IStakingTracker(stakingTracker).getTrackedNode(p.trackerId, nodeId);
+        nodeId = IStakingTracker(p.stakingTracker).voterToNodeId(voter);
+        ( , votes) = IStakingTracker(p.stakingTracker).getTrackedNode(p.trackerId, nodeId);
     }
 
     /// @dev General contents of a proposal
@@ -433,11 +569,12 @@ contract Voting is IVoting {
         address[] memory voters)
     {
         Proposal storage p = proposals[proposalId];
+        (quorumCount, quorumPower) = getQuorum(proposalId);
         return (p.totalYes,
                 p.totalNo,
                 p.totalAbstain,
-                0,
-                0,
+                quorumCount,
+                quorumPower,
                 p.voters);
     }
 
@@ -448,20 +585,4 @@ contract Voting is IVoting {
         Proposal storage p = proposals[proposalId];
         return p.receipts[nodeId];
     }
-}
-
-interface IStakingTracker {
-    // Balance changes are only updated if trackStart <= block.number < trackEnd.
-    function createTracker(uint256 trackStart, uint256 trackEnd) external returns(uint256 trackerId);
-
-    function getTrackerSummary(uint256 trackerId) external view returns(
-        uint256 trackStart,
-        uint256 trackEnd,
-        uint256 numNodes,
-        uint256 totalVotes,
-        uint256 eligibleNodes);
-    function getTrackedNode(uint256 trackerId, address nodeId) external view returns(
-        uint256 nodeBalance,
-        uint256 nodeVotes);
-    function getNodeFromVoter(address voter) external view returns(address nodeId);
 }

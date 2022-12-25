@@ -13,40 +13,6 @@ interface IGovParam {
 
     event SetParam(string name, bool exists, bytes value, uint256 activation);
 
-    function paramNames(uint256 idx) external view returns (string memory);
-
-    function getAllParamNames() external view returns (string[] memory);
-
-    function checkpoints(string calldata name)
-        external
-        view
-        returns (Param[] memory);
-
-    function getAllCheckpoints()
-        external
-        view
-        returns (string[] memory, Param[][] memory);
-
-    function getParam(string calldata name)
-        external
-        view
-        returns (bool, bytes memory);
-
-    function getParamAt(string calldata name, uint256 blockNumber)
-        external
-        view
-        returns (bool, bytes memory);
-
-    function getAllParams()
-        external
-        view
-        returns (string[] memory, bytes[] memory);
-
-    function getAllParamsAt(uint256 blockNumber)
-        external
-        view
-        returns (string[] memory, bytes[] memory);
-
     function setParam(
         string calldata name, bool exists, bytes calldata value,
         uint256 activation) external;
@@ -54,4 +20,26 @@ interface IGovParam {
     function setParamIn(
         string calldata name, bool exists, bytes calldata value,
         uint256 relativeActivation) external;
+
+    /// All (including soft-deleted) param names ever existed
+    function paramNames(uint256 idx) external view returns (string memory);
+    function getAllParamNames() external view returns (string[] memory);
+
+    /// Raw checkpoints
+    function checkpoints(string calldata name) external view
+        returns(Param[] memory);
+    function getAllCheckpoints() external view
+        returns(string[] memory, Param[][] memory);
+
+    /// Any given stored (including soft-deleted) params
+    function getParam(string calldata name) external view
+        returns(bool, bytes memory);
+    function getParamAt(string calldata name, uint256 blockNumber) external view
+        returns(bool, bytes memory);
+
+    /// All existing params
+    function getAllParams() external view
+        returns (string[] memory, bytes[] memory);
+    function getAllParamsAt(uint256 blockNumber) external view
+        returns(string[] memory, bytes[] memory);
 }

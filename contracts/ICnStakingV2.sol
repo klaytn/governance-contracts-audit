@@ -17,8 +17,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
-
 interface ICnStakingV2 {
     // Initialization
     event DeployContract(string contractType, address contractValidator, address nodeId, address rewardAddress, address[] cnAdminList, uint256 requirement, uint256[] unlockTime, uint256[] unlockAmount);
@@ -117,6 +115,11 @@ interface ICnStakingV2 {
     function withdrawApprovedStaking(uint256 _approvedWithdrawalId) external;
 
     // Getters
+    function nodeId() external view returns(address);
+    function rewardAddress() external view returns(address);
+    function stakingTracker() external view returns(address);
+    function voterAddress() external view returns(address);
+
     function getReviewers() external view returns(address[] memory reviewers);
     function getState() external view returns(
         address contractValidator, address nodeId, address rewardAddress,
@@ -138,6 +141,4 @@ interface ICnStakingV2 {
         external view returns(uint256[] memory ids);
     function getApprovedStakingWithdrawalInfo(uint256 _index) external view returns(
         address to, uint256 value, uint256 withdrawableFrom, WithdrawalStakingState state);
-
-    function getVoterAddress() external view returns(address);
 }

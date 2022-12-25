@@ -44,11 +44,11 @@ import "./ICnStakingV2.sol";
 //   - Free stakes can be added or removed at any time on admins' discretion.
 //   - Free stakes can be added either by calling stakeKlay() or sending
 //     a transaction to this contract with nonzero KLAY (via fallback).
-//   - It takes STAKE_LOCKUP after withdrawl request to actually take out the KLAY.
+//   - It takes STAKE_LOCKUP after withdrawal request to actually take out the KLAY.
 //   - Functions
-//     - multisig ApproveStakingWithdrawal: Schedule a withdrawl
-//     - multisig CancelApprovedStakingWithdrawal: Cancel a withdrawl request
-//     - withdrawApprovedStaking(): Take out the KLAY
+//     - multisig ApproveStakingWithdrawal: Schedule a withdrawal
+//     - multisig CancelApprovedStakingWithdrawal: Cancel a withdrawal request
+//     - withdrawApprovedStaking(): Take out the KLAY or cancel an expired withdrawal request.
 //
 // 4. External accounts
 //   - Several addresses constitute the identity of this CN.
@@ -133,10 +133,10 @@ contract CnStakingV2 is ICnStakingV2 {
     }
 
     // External accounts
-    address public nodeId; // informational
-    address public rewardAddress; // informational
-    address public stakingTracker; // used to call refreshStake()
-    address public voterAddress; // read by StakingTracker
+    address public override nodeId; // informational
+    address public override rewardAddress; // informational
+    address public override stakingTracker; // used to call refreshStake()
+    address public override voterAddress; // read by StakingTracker
 
     modifier onlyMultisigTx() {
         require(msg.sender == address(this), "Not a multisig-transaction.");
@@ -417,7 +417,6 @@ contract CnStakingV2 is ICnStakingV2 {
     function withdrawLockupStaking(address payable _to, uint256 _value) external override
     onlyMultisigTx()
     notNull(_to) {
-        // TODO: add ReentrancyGuard
         ( , , , , uint256 withdrawableAmount) = getLockupStakingInfo();
         require(_value > 0 && _value <= withdrawableAmount, "Value is not withdrawable.");
 
@@ -433,10 +432,11 @@ contract CnStakingV2 is ICnStakingV2 {
     /// @dev submit a request to withdraw a part of free stakes.
     ///
     /// Creates a new WithdrawalRequest
-    /// The request is withdrawable from request creation + STAKE_LOCKUP.
-    /// The request expires from request creation + 2 * STAKE_LOCKUP.
+    /// The WithdrawalRequest is withdrawable from request creation + STAKE_LOCKUP.
+    /// The WithdrawalRequest expires from request creation + 2 * STAKE_LOCKUP.
     ///
-    /// Max withdrawable amount is (staked).
+    /// Max withdrawable amount is (staked - unstaking).
+    /// Once the WithdrawalRequest is created, unstaking amount increases.
     ///
     /// @param _to     The recipient address
     /// @param _value  The amount
@@ -444,7 +444,8 @@ contract CnStakingV2 is ICnStakingV2 {
     afterInit()
     onlyAdmin(msg.sender)
     notNull(_to) {
-        require(_value > 0 && unstaking + _value <= staking, "Invalid value.");
+        require(_value > 0 && _value <= staking, "Invalid value.");
+        require(unstaking + _value <= staking, "Too much outstanding withdrawal");
         uint256 id = submitRequest(Functions.ApproveStakingWithdrawal,
                                    toBytes32(_to), bytes32(_value), 0);
         confirmRequest(id);
@@ -455,7 +456,8 @@ contract CnStakingV2 is ICnStakingV2 {
     function approveStakingWithdrawal(address _to, uint256 _value) external override
     onlyMultisigTx()
     notNull(_to) {
-        require(_value > 0 && unstaking + _value <= staking, "Value is not withdrawable.");
+        require(_value > 0 && _value <= staking, "Invalid value.");
+        require(unstaking + _value <= staking, "Too much outstanding withdrawal");
         uint256 id = withdrawalRequestCount;
         withdrawalRequestCount ++;
 
@@ -467,12 +469,14 @@ contract CnStakingV2 is ICnStakingV2 {
             state: WithdrawalStakingState.Unknown
         });
         unstaking += _value;
+        safeRefreshStake();
         emit ApproveStakingWithdrawal(id, _to, _value, time);
     }
 
-    /// @dev submit a request to cancel a withdrawl request
-    /// The withdrawl request ID can be obtained from ApproveStakingWithdrawal event
+    /// @dev submit a request to cancel a withdrawal request
+    /// The withdrawal request ID can be obtained from ApproveStakingWithdrawal event
     /// or getApprovedStakingWithdrawalIds().
+    /// Unstaking amount decreases.
     function submitCancelApprovedStakingWithdrawal(uint256 _id) external override
     afterInit()
     onlyAdmin(msg.sender) {
@@ -485,7 +489,7 @@ contract CnStakingV2 is ICnStakingV2 {
     }
 
     /// @dev cancel a withdrawal request
-    /// emits a CancelApprovedStakingWithdrawal event.
+    /// Emits a CancelApprovedStakingWithdrawal event.
     function cancelApprovedStakingWithdrawal(uint256 _id) external override
     onlyMultisigTx() {
         WithdrawalRequest storage request = withdrawalRequestMap[_id];
@@ -494,6 +498,7 @@ contract CnStakingV2 is ICnStakingV2 {
 
         request.state = WithdrawalStakingState.Canceled;
         unstaking -= request.value;
+        safeRefreshStake();
         emit CancelApprovedStakingWithdrawal(_id, request.to, request.value);
     }
 
@@ -764,36 +769,27 @@ contract CnStakingV2 is ICnStakingV2 {
     /// @dev Refresh the balance of this contract recorded in StakingTracker
     /// This function should never revert.
     function safeRefreshStake() private {
-        if (stakingTracker == address(0)) {
-            return;
-        }
-
-        try IStakingTracker(stakingTracker).refreshStake(address(this)) {
-        } catch {
-        }
+        stakingTracker.call(abi.encodeWithSignature("refreshStake(address)", address(this)));
     }
 
     /// @dev Refresh the voter address of this CN recorded in StakingTracker
     /// This function should never revert.
     function safeRefreshVoter() private {
-        if (stakingTracker == address(0)) {
-            return;
-        }
-
-        try IStakingTracker(stakingTracker).refreshVoter(address(this)) {
-        } catch {
-        }
+        stakingTracker.call(abi.encodeWithSignature("refreshVoter(address)", address(this)));
     }
 
-    /// @dev Take out the approved withdrawl amounts.
+    /// @dev Take out an approved withdrawal amounts.
     ///
-    /// STAKE_LOCKUP after ApproveStakingWithdrawal function has executed,
-    /// an admin can call this function to finish the withdrawl.
+    /// If STAKE_LOCKUP has passed since WithdrawalRequest was created,
+    /// an admin can call this function to execute the withdrawal.
     ///
-    /// However, if another STAKE_LOCKUP passes after the approval,
-    /// then the withdrawal is canceled.
+    /// If 2*STAKE_LOCKUP has passed since WithdrawalRequest was created,
+    /// the withdrawal is canceled by calling this function.
     ///
-    /// The withdrawl request ID can be obtained from ApproveStakingWithdrawal event
+    /// Either way, unstaking amount decreases.
+    ///
+    /// The withdrawal request ID can be obtained from ApproveStakingWithdrawal event
+    /// or getApprovedStakingWithdrawalIds().
     function withdrawApprovedStaking(uint256 _id) external override
     onlyAdmin(msg.sender) {
         WithdrawalRequest storage request = withdrawalRequestMap[_id];
@@ -807,6 +803,7 @@ contract CnStakingV2 is ICnStakingV2 {
             request.state = WithdrawalStakingState.Canceled;
             unstaking -= request.value;
 
+            safeRefreshStake();
             emit CancelApprovedStakingWithdrawal(_id, request.to, request.value);
         } else {
             request.state = WithdrawalStakingState.Transferred;
@@ -871,7 +868,6 @@ contract CnStakingV2 is ICnStakingV2 {
         if (_to == 0 || _to >= requestCount) {
             end = requestCount;
         }
-        require(begin <= end && end <= requestCount, "invalid range");
 
         // Because memory array cannot grow, we must calculate size first.
         uint cnt = 0;
@@ -927,15 +923,15 @@ contract CnStakingV2 is ICnStakingV2 {
                 initialLockupStaking, remainingLockupStaking, withdrawableAmount);
     }
 
-    /// @dev Query withdrawl IDs that matches given state.
+    /// @dev Query withdrawal IDs that matches given state.
     ///
     /// For efficiency, only IDs in range (_from <= id < _to) are searched.
     /// If _to == 0 or _to >= requestCount, then the search range is (_from <= id < requestCount).
     ///
     /// @param _from   search begin index
     /// @param _to     search end index; but search till the end if _to == 0 or _to >= requestCount.
-    /// @param _state  withdrawl state
-    /// @return ids    withdrawl IDs satisfying the conditions
+    /// @param _state  withdrawal state
+    /// @return ids    withdrawal IDs satisfying the conditions
     function getApprovedStakingWithdrawalIds(uint256 _from, uint256 _to, WithdrawalStakingState _state)
         external view override returns(uint256[] memory ids) {
         uint256 begin = _from;
@@ -943,7 +939,6 @@ contract CnStakingV2 is ICnStakingV2 {
         if (_to == 0 || _to >= withdrawalRequestCount) {
             end = withdrawalRequestCount;
         }
-        require(begin <= end && end <= requestCount, "invalid range");
 
         // Because memory array cannot grow, we must calculate size first.
         uint cnt = 0;
@@ -963,8 +958,8 @@ contract CnStakingV2 is ICnStakingV2 {
         return ids;
     }
 
-    /// @dev Query a withdrawl request details
-    /// @param _index  withdrawl request ID
+    /// @dev Query a withdrawal request details
+    /// @param _index  withdrawal request ID
     /// @return to                recipient
     /// @return value             withdrawing amount
     /// @return withdrawableFrom  withdrawable timestamp
@@ -977,11 +972,6 @@ contract CnStakingV2 is ICnStakingV2 {
             withdrawalRequestMap[_index].withdrawableFrom,
             withdrawalRequestMap[_index].state
         );
-    }
-
-    /// @dev Return the voter address
-    function getVoterAddress() external view override returns(address) {
-        return voterAddress;
     }
 }
 

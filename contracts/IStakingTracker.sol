@@ -57,8 +57,8 @@ interface IStakingTracker {
         uint256[] memory nodeBalances,
         uint256[] memory nodeVotes);
 
-    function getNodeFromStaking(uint256 trackerId, address staking)
-        external view returns(address nodeId);
-    function getNodeFromVoter(address voter) external view returns(address nodeId);
-    function getVoterFromNode(address nodeId) external view returns(address voter);
+    function stakingToNodeId(uint256 trackerId, address staking) external view returns(
+        address nodeId);
+    function voterToNodeId(address voter) external view returns(address nodeId);
+    function nodeIdToVoter(address nodeId) external view returns(address voter);
 }

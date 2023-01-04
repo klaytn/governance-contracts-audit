@@ -6,11 +6,11 @@ The Klaytn contract-based governance voting will be conducted on smart contracts
 
 **List of contracts**
 
-- **AddressBook**: an existing contract that stores the list of GC nodes, their staking contracts, and their reward recipient addresses. Code is at [legacy/AddressBook.sol](../contracts/legacy/AddressBook.sol)
+- **AddressBook**: an existing contract that stores the list of GC nodes, their staking contracts, and their reward recipient addresses. See [abook.md](./abook.md)
 - **CnStakingContract**: an existing contract where GC members stake their KLAYs to earn rights to validate blocks. Code is at [legacy/CnStakingContract.sol](../contracts/legacy/CnStakingContract.sol)
 - **CnStakingV2**: an updated version of the existing CnStakingContract. GC members stake their KLAYs to earn rights to validate blocks and cast on-chain votes. See [cns.md](./cns.md)
 - **StakingTracker**: a new contract that tracks voting-related data from AddressBook and CnStakingV2 contracts.
-- **Voting**: a new contract that processes the on-chain voting. It stores governance proposals, counts votes, and sends approved transactions.
+- **Voting**: a new contract that processes the on-chain voting. It stores governance proposals, counts votes, and sends approved transactions. See [voting.md](./voting.md)
 - **GovParam**: a new contract that stores Klaytn governance parameters such as block minting amount. The Klaytn node shall read this contract and use the parameters in block processing.
 
 **List of accounts**

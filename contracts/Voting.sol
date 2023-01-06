@@ -251,7 +251,7 @@ contract Voting is IVoting {
 
     /// @dev Cast a vote to a proposal
     /// The proposal must be in Active state
-    /// A same voter can call this function again to change choice.
+    /// A node can only vote once for a proposal
     /// choice must be one of VoteChoice.
     function castVote(uint256 proposalId, uint8 choice) external override
     onlyState(proposalId, ProposalState.Active) {

@@ -238,7 +238,7 @@ contract Voting is IVoting {
     }
 
     /// @dev Cancel a proposal
-    /// The proposal must be in one of Pending, Active, Passed, or Queued state.
+    /// The proposal must be in Pending state
     /// Only the proposer of the proposal can cancel the proposal.
     function cancel(uint256 proposalId) external override
     onlyState(proposalId, ProposalState.Pending) {

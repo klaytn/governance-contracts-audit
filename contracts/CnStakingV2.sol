@@ -135,7 +135,7 @@ contract CnStakingV2 is ICnStakingV2 {
     // External accounts
     address public override nodeId; // informational
     address public override rewardAddress; // informational
-    address public override stakingTracker; // used to call refreshStake()
+    address public override stakingTracker; // used to call refreshStake(), refreshVoter()
     address public override voterAddress; // read by StakingTracker
 
     modifier onlyMultisigTx() {
@@ -548,6 +548,10 @@ contract CnStakingV2 is ICnStakingV2 {
     function submitUpdateVoterAddress(address _addr) external override
     afterInit()
     onlyAdmin(msg.sender) {
+        if (stakingTracker != address(0) && _addr != address(0)) {
+            address oldNodeId = IStakingTracker(stakingTracker).voterToNodeId(_addr);
+            require(oldNodeId == address(0), "Voter address already taken");
+        }
         uint256 id = submitRequest(Functions.UpdateVoterAddress, toBytes32(_addr), 0, 0);
         confirmRequest(id);
     }
@@ -558,7 +562,9 @@ contract CnStakingV2 is ICnStakingV2 {
     onlyMultisigTx() {
         voterAddress = _addr;
 
-        safeRefreshVoter();
+        if (stakingTracker != address(0)) {
+            IStakingTracker(stakingTracker).refreshVoter(address(this));
+        }
         emit UpdateVoterAddress(_addr);
     }
 
@@ -767,15 +773,10 @@ contract CnStakingV2 is ICnStakingV2 {
     }
 
     /// @dev Refresh the balance of this contract recorded in StakingTracker
-    /// This function should never revert.
+    /// This function should never revert to allow financial features to work
+    /// even if stakingTracker is accidentally malfunctioning.
     function safeRefreshStake() private {
         stakingTracker.call(abi.encodeWithSignature("refreshStake(address)", address(this)));
-    }
-
-    /// @dev Refresh the voter address of this CN recorded in StakingTracker
-    /// This function should never revert.
-    function safeRefreshVoter() private {
-        stakingTracker.call(abi.encodeWithSignature("refreshVoter(address)", address(this)));
     }
 
     /// @dev Take out an approved withdrawal amounts.
@@ -984,4 +985,5 @@ interface IStakingTracker {
     function refreshVoter(address voter) external;
     function CONTRACT_TYPE() external view returns(string memory);
     function VERSION() external view returns(uint256);
+    function voterToNodeId(address voter) external view returns(address nodeId);
 }

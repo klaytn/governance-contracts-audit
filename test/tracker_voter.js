@@ -113,13 +113,8 @@ module.exports = function(E) {
       await must_update_refresh(st, cns0, node0, voter);
 
       // Try to set (node1 <-> voter) via cns1.
-      // cns1.updateVoterAddress() does call refreshVoter(),
-      // but silently fails. Therefore RefreshVoter is not emitted.
-      await must_update_norefresh(st, cns1, node1, voter);
-
-      // Try to set (node1 <-> voter) via explicit refresh.
-      // The tx reverts.
-      await revert_refresh(st, cns1.address, "Voter address already taken");
+      // cns1.submitUpdateVoterAddress() fails.
+      await expectRevert(tx_update(cns1, voter), "Voter address already taken");
 
       expect(await st.nodeIdToVoter(node0)).to.equal(voter); // node0 -> voter
       expect(await st.voterToNodeId(voter)).to.equal(node0); // voter -> node0

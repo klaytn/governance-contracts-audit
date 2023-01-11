@@ -2,10 +2,11 @@ const _ = require("lodash");
 const { ethers } = require("hardhat");
 const { expect } = require("chai");
 const { constants } = require("@openzeppelin/test-helpers");
-const { nowTime, setTime, toPeb, addPebs, subPebs, expectRevert } = require("./helper.js");
+const { numericAddr, nowTime, setTime, toPeb, addPebs, subPebs, expectRevert } = require("./helper.js");
 
 const NULL_ADDR = constants.ZERO_ADDRESS;
 const RAND_ADDR = "0xe3B0C44298FC1C149AfBF4C8996fb92427aE41E4"; // non-null placeholder
+const NA = numericAddr;
 
 module.exports = function(E) {
 
@@ -78,6 +79,67 @@ module.exports = function(E) {
       it("refresh voter", async function() {
         await expect(tx_update(cns, RAND_ADDR)).to.emit(E.tracker, "RefreshVoter");
       });
+      it("refresh voter skipped if tracker is null", async function() {
+        cns = await E.deployInit({ req: 1, });
+        await expect(tx_update(cns, RAND_ADDR)).to.not.emit(E.tracker, "RefreshVoter");
+      });
+
+      it("reject voter already taken", async function() {
+        let ABook = await ethers.getContractFactory("AddressBookMock");
+        let abook = await ABook.deploy();
+        await abook.constructContract([], 0);
+
+        let Tracker = await ethers.getContractFactory("StakingTrackerMock");
+        let tracker = await Tracker.deploy();
+        await tracker.mockSetAddressBookAddress(abook.address);
+
+        let [nodeA, nodeB, rewardA, rewardB] = [NA(0,1), NA(1,1), NA(0,9), NA(1,9)];
+        let cnsA = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeA, rewardAddr: rewardA });
+        let cnsB = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeB, rewardAddr: rewardB });
+        await abook.mockRegisterCnStakingContracts(
+          [nodeA, nodeB],
+          [cnsA.address, cnsB.address],
+          [rewardA, rewardB]);
+
+        let voter = RAND_ADDR;
+        await expect(tx_update(cnsA, voter)).to.emit(tracker, "RefreshVoter");
+        expect(await tracker.voterToNodeId(voter)).to.equal(nodeA); // voter -> nodeA mapping created
+
+        await expectRevert(tx_update(cnsB, voter), "Voter address already taken");
+        expect(await tracker.voterToNodeId(voter)).to.equal(nodeA); // voter -> nodeA mapping retained
+      });
+      it("reject voter already taken concurrent", async function() {
+        let ABook = await ethers.getContractFactory("AddressBookMock");
+        let abook = await ABook.deploy();
+        await abook.constructContract([], 0);
+
+        let Tracker = await ethers.getContractFactory("StakingTrackerMock");
+        let tracker = await Tracker.deploy();
+        await tracker.mockSetAddressBookAddress(abook.address);
+
+        let [nodeA, nodeB, rewardA, rewardB] = [NA(0,1), NA(1,1), NA(0,9), NA(1,9)];
+        let cnsA = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeA, rewardAddr: rewardA });
+        let cnsB = await E.deployInit({ req: 2, tracker: tracker.address, nodeId: nodeB, rewardAddr: rewardB });
+        await abook.mockRegisterCnStakingContracts(
+          [nodeA, nodeB],
+          [cnsA.address, cnsB.address],
+          [rewardA, rewardB]);
+
+        let voter = RAND_ADDR;
+        // submitUpdateVoterAddress succeeds
+        await E.tx_submit(cnsB, E.admin1, 'UpdateVoterAddress', [voter]);
+
+        // In the meantime, other CN takes the voter address
+        await expect(tx_update(cnsA, voter)).to.emit(tracker, "RefreshVoter");
+        expect(await tracker.voterToNodeId(voter)).to.equal(nodeA); // voter -> nodeA mapping created
+
+        // updateVoterAddress fails
+        await expect(E.tx_confirm(cnsB, E.admin2, 0, 'UpdateVoterAddress', [voter]))
+          .to.emit(cnsB, "ExecuteRequestFailure");
+        expect(await tracker.voterToNodeId(voter)).to.equal(nodeA); // voter -> nodeA mapping retained
+      });
+
+
     }); // UpdateVoterAddress
   });
 }

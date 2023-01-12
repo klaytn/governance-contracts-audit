@@ -175,6 +175,18 @@ contract StakingTracker is IStakingTracker, Ownable {
         tracker.nodeBalances[nodeId] += newBalance;
         uint256 nodeBalance = tracker.nodeBalances[nodeId];
 
+        // Update vote cap if necessary
+        bool wasEligible = oldBalance >= MIN_STAKE();
+        bool isEligible = newBalance >= MIN_STAKE();
+        if (wasEligible != isEligible) {
+            if (wasEligible) { // eligible -> not eligible
+                tracker.eligibleNodes -= 1;
+            } else { // not eligible -> eligible
+                tracker.eligibleNodes += 1;
+            }
+            recalcAllVotes(trackerId);
+        }
+
         // Update votes
         uint256 oldVotes = tracker.nodeVotes[nodeId];
         uint256 newVotes = calcVotes(tracker.eligibleNodes, nodeBalance);
@@ -184,6 +196,26 @@ contract StakingTracker is IStakingTracker, Ownable {
 
         emit RefreshStake(trackerId, nodeId, staking,
                           newBalance, nodeBalance, newVotes, tracker.totalVotes);
+    }
+
+    /// @dev Recalculate votes of all nodes
+    function recalcAllVotes(uint256 trackerId) internal {
+        Tracker storage tracker = trackers[trackerId];
+
+        uint256 totalVotes = tracker.totalVotes;
+        for (uint256 i = 0; i < tracker.nodeIds.length; i++) {
+            address nodeId = tracker.nodeIds[i];
+            uint256 nodeBalance = tracker.nodeBalances[nodeId];
+            uint256 oldVotes = tracker.nodeVotes[nodeId];
+            uint256 newVotes = calcVotes(tracker.eligibleNodes, nodeBalance);
+
+            if (oldVotes != newVotes) {
+                tracker.nodeVotes[nodeId] = newVotes;
+                totalVotes -= oldVotes;
+                totalVotes += newVotes;
+            }
+        }
+        tracker.totalVotes = totalVotes; // only write final result to save gas
     }
 
     /// @dev Re-evaluate voter account mapping related to the staking contract

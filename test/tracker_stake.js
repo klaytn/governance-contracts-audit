@@ -17,7 +17,7 @@ module.exports = function(E) {
   describe("refreshStake", function() {
 
     let conf111, conf211;
-    let conf222, conf122, conf022;
+    let conf222, conf122, conf022, conf011;
     before(function() {
       // confs starting from (1,1,1)
       conf111 = E.createConf({
@@ -49,6 +49,11 @@ module.exports = function(E) {
         balances:     [ [1e6], [10e6], [10e6] ],
         nodeVotes:    [ 0,     2,      2      ],
         numNodes: 3, totalVotes: 4, eligibleNodes: 3,
+      });
+      conf011 = E.createConf({
+        balances:     [ [1e6], [10e6], [10e6] ],
+        nodeVotes:    [ 0,     1,      1      ],
+        numNodes: 3, totalVotes: 2, eligibleNodes: 2,
       });
     });
 
@@ -134,10 +139,10 @@ module.exports = function(E) {
       it("withdraw non-lockup fall below minstake", async function() {
         let { st, tid, cns0 } = await deploy_create(conf222);
         // votes already decrease after approval
-        await check_refresh(st, tid, cns0, tx_approve(cns0, toPeb(9e6)), conf022);
+        await check_refresh(st, tid, cns0, tx_approve(cns0, toPeb(9e6)), conf011);
         // votes unchanged by actual withdrawal
         await waitWithdrawFrom(cns0);
-        await check_refresh(st, tid, cns0, tx_withdraw(cns0), conf022);
+        await check_refresh(st, tid, cns0, tx_withdraw(cns0), conf011);
       });
       it("explicit cancel non-lockup stayed above minstake", async function() {
         let { st, tid, cns0 } = await deploy_create(conf222);
@@ -147,7 +152,7 @@ module.exports = function(E) {
       });
       it("explicit cancel non-lockup fell below minstake", async function() {
         let { st, tid, cns0 } = await deploy_create(conf222);
-        await check_refresh(st, tid, cns0, tx_approve(cns0, toPeb(9e6)), conf022);
+        await check_refresh(st, tid, cns0, tx_approve(cns0, toPeb(9e6)), conf011);
         // votes restored by cancelling the approval
         await check_refresh(st, tid, cns0, tx_cancel(cns0), conf222);
       });
@@ -160,7 +165,7 @@ module.exports = function(E) {
       });
       it("timeout cancel non-lockup fell above minstake", async function() {
         let { st, tid, cns0 } = await deploy_create(conf222);
-        await check_refresh(st, tid, cns0, tx_approve(cns0, toPeb(9e6)), conf022);
+        await check_refresh(st, tid, cns0, tx_approve(cns0, toPeb(9e6)), conf011);
         // votes restored by cancelling (due to timeout) the approval
         await waitWithdrawUntil(cns0);
         await check_refresh(st, tid, cns0, tx_withdraw(cns0), conf222);

@@ -20,21 +20,57 @@ module.exports = function(E) {
       function tx_update(cns, addr) {
         return E.tx_submit(cns, E.admin1, 'UpdateRewardAddress', [addr]);
       }
+      function tx_accept(cns, sender) {
+        return cns.connect(sender).acceptRewardAddress();
+      }
 
       beforeEach(async function() {
         await cns.mockSetAddressBookAddress(E.abook.address);
       });
 
-      it("success", async function() {
+      it("success by accepting from reward address", async function() {
+        let reward = E.other1;
+        let rewardAddr = E.other1.address;
+
+        await E.must_func(cns, E.admin1, 'UpdateRewardAddress', [rewardAddr], [rewardAddr]);
+        expect(await cns.pendingRewardAddress()).to.equal(rewardAddr);
+
+        await expect(tx_accept(cns, reward))
+            .to.emit(cns, "AcceptRewardAddress").withArgs(rewardAddr)
+            .to.emit(E.abook, "ReviseRewardAddress");
+        expect(await cns.pendingRewardAddress()).to.equal(NULL_ADDR);
+        expect(await cns.rewardAddress()).to.equal(rewardAddr);
+      });
+      it("success by accepting from AddressBook admin", async function() {
+        let reward = E.other1;
+        let rewardAddr = E.other1.address;
+
+        await E.must_func(cns, E.admin1, 'UpdateRewardAddress', [rewardAddr], [rewardAddr]);
+        expect(await cns.pendingRewardAddress()).to.equal(rewardAddr);
+
+        // Note that E.cv is an admin of AddressBook
+        let adminList = (await E.abook.getState())[0];
+        expect(adminList).to.contain(E.cv.address);
+
+        await expect(tx_accept(cns, E.cv))
+            .to.emit(cns, "AcceptRewardAddress").withArgs(rewardAddr)
+            .to.emit(E.abook, "ReviseRewardAddress");
+        expect(await cns.pendingRewardAddress()).to.equal(NULL_ADDR);
+        expect(await cns.rewardAddress()).to.equal(rewardAddr);
+      });
+      it("cancel update by nullifying pendingRewardAddress", async function() {
         await E.must_func(cns, E.admin1, 'UpdateRewardAddress', [RAND_ADDR], [RAND_ADDR]);
+        expect(await cns.pendingRewardAddress()).to.equal(RAND_ADDR);
+
+        await E.must_func(cns, E.admin1, 'UpdateRewardAddress', [NULL_ADDR], [NULL_ADDR]);
+        expect(await cns.pendingRewardAddress()).to.equal(NULL_ADDR);
       });
-      it("AddressBook event", async function() {
-        await expect(tx_update(cns, RAND_ADDR))
-              .to.emit(E.abook, "ReviseRewardAddress")
-              .withArgs(NULL_ADDR /* nodeId */, NULL_ADDR /* prev */, RAND_ADDR /* curr */);
-      });
-      it("reject null address", async function() {
-        await expectRevert(tx_update(cns, NULL_ADDR), "Address is null");
+      it("reject accept by other", async function() {
+        await E.must_func(cns, E.admin1, 'UpdateRewardAddress', [RAND_ADDR], [RAND_ADDR]);
+        expect(await cns.pendingRewardAddress()).to.equal(RAND_ADDR);
+
+        await expectRevert(tx_accept(cns, E.other2), "Unauthorized to accept reward address");
+        expect(await cns.pendingRewardAddress()).to.equal(RAND_ADDR);
       });
     }); // UpdateRewardAddress
 

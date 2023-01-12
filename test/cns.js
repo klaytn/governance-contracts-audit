@@ -44,6 +44,7 @@ class CnsTestEnv {
 
     let ABook = await ethers.getContractFactory("AddressBookMock");
     this.abook = await ABook.deploy();
+    await this.abook.constructContract([this.cv.address], 1);
 
     this.FuncNames = _.filter(_.keys(FuncID), (name) => name != 'Unknown');
     this._sampleArgs = {};

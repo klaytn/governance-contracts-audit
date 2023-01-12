@@ -54,7 +54,8 @@ import "./ICnStakingV2.sol";
 //   - Several addresses constitute the identity of this CN.
 //   - Among them, RewardAddress can be modified via CnStaking contract.
 //   - Functions
-//     - multisig UpdateRewardAddress: Request AddressBook to change reward address.
+//     - multisig UpdateRewardAddress: Setup pendingRewardAddress
+//     - acceptRewardAddress(): Request AddressBook to change reward address.
 //     - multisig UpdateStakingTracker: Change the StakingTracker contract to report stakes.
 //     - multisig UpdateVoterAddress: Change the Voter account and notify to StakingTracker.
 
@@ -135,6 +136,7 @@ contract CnStakingV2 is ICnStakingV2 {
     // External accounts
     address public override nodeId; // informational
     address public override rewardAddress; // informational
+    address public override pendingRewardAddress; // used in updateRewardAddress in progress
     address public override stakingTracker; // used to call refreshStake(), refreshVoter()
     address public override voterAddress; // read by StakingTracker
 
@@ -505,20 +507,18 @@ contract CnStakingV2 is ICnStakingV2 {
     /// @dev submit a request to update the reward address of this CN
     function submitUpdateRewardAddress(address _addr) external override
     afterInit()
-    onlyAdmin(msg.sender)
-    notNull(_addr) {
+    onlyAdmin(msg.sender) {
         uint256 id = submitRequest(Functions.UpdateRewardAddress, toBytes32(_addr), 0, 0);
         confirmRequest(id);
     }
 
     /// @dev Update the reward address in the AddressBook
     /// Emits an UpdateRewardAddress event.
-    /// Also emits a ReviseRewardAddress event from the AddressBook.
+    /// Need to call acceptRewardAddress() to reflect the change to AddressBook.
+    /// The address can be null, which cancels the reward address update attempt.
     function updateRewardAddress(address _addr) external override
-    onlyMultisigTx()
-    notNull(_addr) {
-        rewardAddress = _addr;
-        IAddressBook(ADDRESS_BOOK_ADDRESS()).reviseRewardAddress(_addr);
+    onlyMultisigTx() {
+        pendingRewardAddress = _addr;
         emit UpdateRewardAddress(_addr);
     }
 
@@ -819,6 +819,35 @@ contract CnStakingV2 is ICnStakingV2 {
         }
     }
 
+    /// @dev Finish updating the reward address
+    /// Must be called from either the pendingRewardAddress, or one of the AddressBook admins.
+    /// This step guarantees that the rewardAddress is owned by the current CN.
+    ///
+    /// Emits an AcceptRewardAddress event.
+    /// Also emits a ReviseRewardAddress event from the AddressBook.
+    function acceptRewardAddress() external override {
+        require(canAcceptRewardAddress(), "Unauthorized to accept reward address");
+
+        IAddressBook(ADDRESS_BOOK_ADDRESS()).reviseRewardAddress(pendingRewardAddress);
+        rewardAddress = pendingRewardAddress;
+        pendingRewardAddress = address(0);
+
+        emit UpdateRewardAddress(rewardAddress);
+    }
+
+    function canAcceptRewardAddress() private returns(bool) {
+        if (msg.sender == pendingRewardAddress) {
+            return true;
+        }
+        (address[] memory abookAdminList, ) = IAddressBook(ADDRESS_BOOK_ADDRESS()).getState();
+        for (uint256 i = 0; i < abookAdminList.length; i++) {
+            if (msg.sender == abookAdminList[i]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Public getters
 
     /// @dev Return the reviewers of the initial lockup conditions
@@ -977,6 +1006,7 @@ contract CnStakingV2 is ICnStakingV2 {
 }
 
 interface IAddressBook {
+    function getState() external view returns(address[] memory, uint256);
     function reviseRewardAddress(address) external;
 }
 

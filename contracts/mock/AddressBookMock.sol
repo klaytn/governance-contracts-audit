@@ -61,7 +61,8 @@ contract AddressBookMock {
     /*
      *  setter functions
      */
-    function constructContract(address[] /* _adminList */, uint256 _requirement) external {
+    function constructContract(address[] _adminList, uint256 _requirement) external {
+        adminList = _adminList;
         requirement = _requirement;
         isConstructed = true;
     }

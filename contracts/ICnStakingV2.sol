@@ -47,6 +47,7 @@ interface ICnStakingV2 {
     // Public functions
     event StakeKlay(address from, uint256 value);
     event WithdrawApprovedStaking(uint256 approvedWithdrawalId, address to, uint256 value);
+    event AcceptRewardAddress(address rewardAddress);
 
     // Emitted from AddressBook
     event ReviseRewardAddress(address cnNodeId, address prevRewardAddress, address curRewardAddress);
@@ -113,10 +114,12 @@ interface ICnStakingV2 {
     function stakeKlay() external payable;
     receive() external payable;
     function withdrawApprovedStaking(uint256 _approvedWithdrawalId) external;
+    function acceptRewardAddress() external;
 
     // Getters
     function nodeId() external view returns(address);
     function rewardAddress() external view returns(address);
+    function pendingRewardAddress() external view returns(address);
     function stakingTracker() external view returns(address);
     function voterAddress() external view returns(address);
 

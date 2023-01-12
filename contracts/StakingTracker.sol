@@ -35,7 +35,7 @@ contract StakingTracker is IStakingTracker, Ownable {
         mapping(address => address) stakingToNodeId;
 
         // Balances and voting powers.
-        // First collected at crateTracker() and updated at notifyStake() until trackEnd.
+        // First collected at crateTracker() and updated at refreshStake() until trackEnd.
         mapping(address => uint256) stakingBalances; // staking address balances
         mapping(address => uint256) nodeBalances; // consolidated node balances
         mapping(address => uint256) nodeVotes; // node voting powers
@@ -119,20 +119,24 @@ contract StakingTracker is IStakingTracker, Ownable {
     /// @dev Populate a tracker with voting powers
     function calcAllVotes(uint256 trackerId) private {
         Tracker storage tracker = trackers[trackerId];
-        tracker.totalVotes = 0;
-        tracker.eligibleNodes = 0;
+        uint256 eligibleNodes = 0;
+        uint256 totalVotes = 0;
 
         for (uint256 i = 0; i < tracker.nodeIds.length; i++) {
-            if (isNodeEligible(trackerId, tracker.nodeIds[i])) {
-                tracker.eligibleNodes ++;
+            address nodeId = tracker.nodeIds[i];
+            if (tracker.nodeBalances[nodeId] >= MIN_STAKE()) {
+                eligibleNodes ++;
             }
         }
         for (uint256 i = 0; i < tracker.nodeIds.length; i++) {
             address nodeId = tracker.nodeIds[i];
-            uint256 votes = calcVotes(tracker.eligibleNodes, tracker.nodeBalances[nodeId]);
+            uint256 votes = calcVotes(eligibleNodes, tracker.nodeBalances[nodeId]);
             tracker.nodeVotes[nodeId] = votes;
-            tracker.totalVotes += votes;
+            totalVotes += votes;
         }
+
+        tracker.eligibleNodes = eligibleNodes;
+        tracker.totalVotes = totalVotes; // only write final result to save gas
     }
 
     /// @dev Re-evaluate Tracker contents related to the staking contract
@@ -323,13 +327,6 @@ contract StakingTracker is IStakingTracker, Ownable {
             return (accountBalance - unstaking);
         }
         return 0;
-    }
-
-    /// @dev Determine if a node is eligible for voting with respect to given tracker.
-    /// A node is eligible if it has staked at least MIN_STAKE().
-    function isNodeEligible(uint256 trackerId, address nodeId) private view returns(bool) {
-        Tracker storage tracker = trackers[trackerId];
-        return tracker.nodeBalances[nodeId] >= MIN_STAKE();
     }
 
     /// @dev Calculate voting power from staking amounts.

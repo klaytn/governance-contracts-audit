@@ -1,7 +1,5 @@
 # Klaytn governance contracts
 
-![scope.png](./scope.png)
-
 ## Audit scope
 
 - CnStakingV2.sol
@@ -28,4 +26,5 @@ npx hardhat coverage
 
 ## Resources
 
+- See [./docs](./docs)
 - [KIP-81](https://github.com/yeri-lee/kips/blob/master/KIPs/kip-81.md)

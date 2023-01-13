@@ -63,8 +63,21 @@ interface IVoting {
     event VoteCast(address indexed voter, uint256 proposalId,
                    uint8 choice, uint256 votes, string reason);
 
-    /// @dev Emitted when the secretariat is changed
-    event UpdateSecretariat(address oldAddr, address newAddr);
+    /// @dev Emitted when the StakingTracker is changed
+    event UpdateStakingTracker(address oldAddr, address newAddr);
+
+    /// @dev Emitted when the secretary is changed
+    event UpdateSecretary(address oldAddr, address newAddr);
+
+    /// @dev Emitted when the AccessRule is changed
+    event UpdateAccessRule(
+        bool secretaryPropose, bool voterPropose,
+        bool secretaryExecute, bool voterExecute);
+
+    /// @dev Emitted when the TimingRule is changed
+    event UpdateTimingRule(
+        uint256 minVotingDelay,  uint256 maxVotingDelay,
+        uint256 minVotingPeriod, uint256 maxVotingPeriod);
 
     // Mutators
 
@@ -72,20 +85,35 @@ interface IVoting {
         string memory description,
         address[] memory targets,
         uint256[] memory values,
-        bytes[] memory calldatas) external returns (uint256 proposalId);
+        bytes[] memory calldatas,
+        uint256 votingDelay,
+        uint256 votingPeriod
+    ) external returns (uint256 proposalId);
 
     function cancel(uint256 proposalId) external;
     function castVote(uint256 proposalId, uint8 choice) external;
     function queue(uint256 proposalId) external;
     function execute(uint256 proposalId) external payable;
-    function updateSecretariat(address newAddr) external;
+
+    function updateStakingTracker(address newAddr) external;
+    function updateSecretary(address newAddr) external;
+    function updateAccessRule(
+        bool secretaryPropose, bool voterPropose,
+        bool secretaryExecute, bool voterExecute) external;
+    function updateTimingRule(
+        uint256 minVotingDelay,  uint256 maxVotingDelay,
+        uint256 minVotingPeriod, uint256 maxVotingPeriod) external;
 
     // Getters
 
-    function secretariat() external view returns(address);
-
-    function votingDelay() external view returns(uint256);
-    function votingPeriod() external view returns(uint256);
+    function stakingTracker() external view returns(address);
+    function secretary() external view returns(address);
+    function accessRule() external view returns(
+        bool secretaryPropose, bool voterPropose,
+        bool secretaryExecute, bool voterExecute);
+    function timingRule() external view returns(
+        uint256 minVotingDelay,  uint256 maxVotingDelay,
+        uint256 minVotingPeriod, uint256 maxVotingPeriod);
     function queueTimeout() external view returns(uint256);
     function execDelay() external view returns(uint256);
     function execTimeout() external view returns(uint256);
@@ -122,4 +150,14 @@ interface IVoting {
         address[] memory voters);
     function getReceipt(uint256 proposalId, address voter)
         external view returns(Receipt memory);
+    function getTrackerSummary(uint256 proposalId) external view returns(
+        uint256 trackStart,
+        uint256 trackEnd,
+        uint256 numNodes,
+        uint256 totalVotes,
+        uint256 eligibleNodes);
+    function getAllTrackedNodes(uint256 proposalId) external view returns(
+        address[] memory nodeIds,
+        uint256[] memory nodeBalances,
+        uint256[] memory nodeVotes);
 }

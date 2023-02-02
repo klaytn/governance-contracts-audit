@@ -825,8 +825,9 @@ contract CnStakingV2 is ICnStakingV2 {
     ///
     /// Emits an AcceptRewardAddress event.
     /// Also emits a ReviseRewardAddress event from the AddressBook.
-    function acceptRewardAddress() external override {
+    function acceptRewardAddress(address _addr) external override {
         require(canAcceptRewardAddress(), "Unauthorized to accept reward address");
+        require(_addr == pendingRewardAddress, "Given address does not match the pending");
 
         IAddressBook(ADDRESS_BOOK_ADDRESS()).reviseRewardAddress(pendingRewardAddress);
         rewardAddress = pendingRewardAddress;

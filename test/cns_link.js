@@ -20,8 +20,8 @@ module.exports = function(E) {
       function tx_update(cns, addr) {
         return E.tx_submit(cns, E.admin1, 'UpdateRewardAddress', [addr]);
       }
-      function tx_accept(cns, sender) {
-        return cns.connect(sender).acceptRewardAddress();
+      function tx_accept(cns, sender, addr) {
+        return cns.connect(sender).acceptRewardAddress(addr);
       }
 
       beforeEach(async function() {
@@ -35,7 +35,7 @@ module.exports = function(E) {
         await E.must_func(cns, E.admin1, 'UpdateRewardAddress', [rewardAddr], [rewardAddr]);
         expect(await cns.pendingRewardAddress()).to.equal(rewardAddr);
 
-        await expect(tx_accept(cns, reward))
+        await expect(tx_accept(cns, reward, rewardAddr))
             .to.emit(cns, "AcceptRewardAddress").withArgs(rewardAddr)
             .to.emit(E.abook, "ReviseRewardAddress");
         expect(await cns.pendingRewardAddress()).to.equal(NULL_ADDR);
@@ -52,7 +52,7 @@ module.exports = function(E) {
         let adminList = (await E.abook.getState())[0];
         expect(adminList).to.contain(E.cv.address);
 
-        await expect(tx_accept(cns, E.cv))
+        await expect(tx_accept(cns, E.cv, rewardAddr))
             .to.emit(cns, "AcceptRewardAddress").withArgs(rewardAddr)
             .to.emit(E.abook, "ReviseRewardAddress");
         expect(await cns.pendingRewardAddress()).to.equal(NULL_ADDR);
@@ -69,8 +69,13 @@ module.exports = function(E) {
         await E.must_func(cns, E.admin1, 'UpdateRewardAddress', [RAND_ADDR], [RAND_ADDR]);
         expect(await cns.pendingRewardAddress()).to.equal(RAND_ADDR);
 
-        await expectRevert(tx_accept(cns, E.other2), "Unauthorized to accept reward address");
+        await expectRevert(tx_accept(cns, E.other2, RAND_ADDR), "Unauthorized to accept reward address");
+      });
+      it("reject accept with different pending address", async function() {
+        await E.must_func(cns, E.admin1, 'UpdateRewardAddress', [RAND_ADDR], [RAND_ADDR]);
         expect(await cns.pendingRewardAddress()).to.equal(RAND_ADDR);
+
+        await expectRevert(tx_accept(cns, E.cv, E.other1.address), "Given address does not match the pending");
       });
     }); // UpdateRewardAddress
 

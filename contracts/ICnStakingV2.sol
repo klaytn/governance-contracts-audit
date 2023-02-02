@@ -114,7 +114,7 @@ interface ICnStakingV2 {
     function stakeKlay() external payable;
     receive() external payable;
     function withdrawApprovedStaking(uint256 _approvedWithdrawalId) external;
-    function acceptRewardAddress() external;
+    function acceptRewardAddress(address _rewardAddress) external;
 
     // Getters
     function nodeId() external view returns(address);

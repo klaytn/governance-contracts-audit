@@ -18,6 +18,9 @@ module.exports = function(E) {
     it("success by proposal", async function() {
       await E.must_updateStakingTracker(vo, null, E.other1.address);
     });
+    it("reject null address", async function() {
+      await E.revert_updateStakingTracker(vo, null, NULL_ADDR, "Address is null");
+    });
     it("reject direct call", async function() {
       await E.revert_updateStakingTracker(vo, E.secr1, E.other1.address,
         "Not a governance transaction");

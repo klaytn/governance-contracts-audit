@@ -360,6 +360,9 @@ contract Voting is IVoting {
     /// @dev Update the StakingTracker address
     /// Should not be called if there is an active proposal
     function updateStakingTracker(address newAddr) public override onlyGovernance {
+        // Retire expired trackers
+        IStakingTracker(stakingTracker).refreshStake(address(0));
+        require(IStakingTracker(stakingTracker).getLiveTrackerIds().length == 0, "Cannot update tracker when there is an active tracker");
         address oldAddr = stakingTracker;
         stakingTracker = newAddr;
         emit UpdateStakingTracker(oldAddr, newAddr);

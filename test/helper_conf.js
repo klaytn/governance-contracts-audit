@@ -140,6 +140,7 @@ class StakingConf {
     await setTime((await nowTime()) + 10000);
     await Promise.all(_.map(cnsList, (cns) => cns.setBalance()));
     let cnsAddrsList = _.map(cnsList, (cns) => cns.address);
+    this.cnsList = cnsList;
 
     return { nodeIds, cnsAddrsList, rewardAddrs };
   }

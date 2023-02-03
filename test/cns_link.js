@@ -88,6 +88,14 @@ module.exports = function(E) {
       it("reject non-contract", async function() {
         await expectRevert(tx_update(cns, RAND_ADDR), "function call to a non-contract account");
       });
+      it("reject when there is an active tracker", async function() {
+        let Active = await ethers.getContractFactory("StakingTrackerMockActive");
+        let active = await Active.deploy();
+        // first, change to live succeeds
+        await E.must_func(cns, E.admin1, 'UpdateStakingTracker', [active.address], [active.address]);
+        // then, change back will fail
+        await expectRevert(tx_update(cns, E.tracker.address), "Cannot update tracker when there is an active tracker");
+      });
       it("reject invalid contract with wrong version", async function() {
         let Invalid = await ethers.getContractFactory("StakingTrackerMockWrong");
         let invalid = await Invalid.deploy();

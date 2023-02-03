@@ -523,11 +523,16 @@ contract CnStakingV2 is ICnStakingV2 {
     }
 
     /// @dev submit a request to update the staking tracker this CN reports to
+    /// Should not be called if there is an active proposal
     function submitUpdateStakingTracker(address _tracker) external override
     afterInit()
     onlyAdmin(msg.sender)
     notNull(_tracker) {
         require(validStakingTracker(_tracker), "Invalid contract");
+        if (stakingTracker != address(0)) {
+            IStakingTracker(stakingTracker).refreshStake(address(this));
+            require(IStakingTracker(stakingTracker).getLiveTrackerIds().length == 0, "Cannot update tracker when there is an active tracker");
+        }
 
         uint256 id = submitRequest(Functions.UpdateStakingTracker, toBytes32(_tracker), 0, 0);
         confirmRequest(id);
@@ -535,10 +540,15 @@ contract CnStakingV2 is ICnStakingV2 {
 
     /// @dev Update the staking tracker
     /// Emits an UpdateStakingTracker event.
+    /// Should not be called if there is an active proposal
     function updateStakingTracker(address _tracker) external override
     onlyMultisigTx()
     notNull(_tracker) {
         require(validStakingTracker(_tracker), "Invalid contract");
+        if (stakingTracker != address(0)) {
+            IStakingTracker(stakingTracker).refreshStake(address(this));
+            require(IStakingTracker(stakingTracker).getLiveTrackerIds().length == 0, "Cannot update tracker when there is an active tracker");
+        }
 
         stakingTracker = _tracker;
         emit UpdateStakingTracker(_tracker);
@@ -1016,4 +1026,5 @@ interface IStakingTracker {
     function CONTRACT_TYPE() external view returns(string memory);
     function VERSION() external view returns(uint256);
     function voterToNodeId(address voter) external view returns(address nodeId);
+    function getLiveTrackerIds() external view returns(uint256[] memory);
 }

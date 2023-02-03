@@ -59,6 +59,11 @@ module.exports = function(E) {
 
     async function deploy_create(conf) {
       let { st, cns0 } = await E.deploy_get_cns0(conf);
+      for (const cnsAddr of conf.cnsAddrsList) {
+        const cns = await ethers.getContractAt("CnStakingV2", cnsAddr);
+        await cns.connect(E.admin1).submitUpdateStakingTracker(st.address);
+      }
+
       let { tid, ts, te } = await E.must_create(st);
       await E.check_tracker(st, tid, conf, ts, te);
       return { st, tid, ts, te, cns0 };
@@ -175,13 +180,18 @@ module.exports = function(E) {
     describe("tracker timing", function() {
       it("trigger by explicit refresh call", async function() {
         let { st, cns0 } = await E.deploy_get_cns0(conf111, false);
+        for (const cnsAddr of conf111.cnsAddrsList) {
+          const cns = await ethers.getContractAt("CnStakingV2", cnsAddr);
+          await cns.connect(E.admin1).submitUpdateStakingTracker(st.address);
+        }
+
         let { tid } = await E.must_create(st);
 
         // refreshStake() is not automatically invoked.
         // Balance change is unrecognized
         await expect(tx_stake(cns0, toPeb(5e6)))
-          .to.not.emit(st, "RefreshStake");
-        await E.check_tracker(st, tid, conf111);
+          .to.emit(st, "RefreshStake");
+        await E.check_tracker(st, tid, conf211);
 
         // Anyone can invoke refreshStake()
         // Balance change is recognized
@@ -212,6 +222,10 @@ module.exports = function(E) {
       it("partial updates after trackEnd", async function() {
         // Create three trackers with different trackEnd blocks.
         let { st, cns0 } = await E.deploy_get_cns0(conf111);
+        for (const cnsAddr of conf111.cnsAddrsList) {
+          const cns = await ethers.getContractAt("CnStakingV2", cnsAddr);
+          await cns.connect(E.admin1).submitUpdateStakingTracker(st.address);
+        }
         let [ tid1, ts1, te1 ] = await E.must_create_a(st, E.deployer, 60);
         let [ tid2, ts2, te2 ] = await E.must_create_a(st, E.deployer, 120);
         let [ tid3, ts3, te3 ] = await E.must_create_a(st, E.deployer, 180);
@@ -245,6 +259,10 @@ module.exports = function(E) {
       it("retire old trackers", async function() {
         // Create 5 trackers with different trackEnd blocks.
         let { st } = await E.deploy_get_cns0(conf111);
+        for (const cnsAddr of conf111.cnsAddrsList) {
+          const cns = await ethers.getContractAt("CnStakingV2", cnsAddr);
+          await cns.connect(E.admin1).submitUpdateStakingTracker(st.address);
+        }
         let [ tid1, ts1, te1 ] = await E.must_create_a(st, E.deployer, 20); // ##
         let [ tid2, ts2, te2 ] = await E.must_create_a(st, E.deployer, 10); // #
         let [ tid3, ts3, te3 ] = await E.must_create_a(st, E.deployer, 30); // ###

@@ -49,6 +49,16 @@ contract StakingTrackerMockReceiver {
     function CONTRACT_TYPE() external pure returns(string memory) { return "StakingTracker"; }
     function VERSION() external pure returns(uint256) { return 1; }
     function voterToNodeId(address voter) external pure returns(address nodeId) { return address(0); }
+    function getLiveTrackerIds() external view returns(uint256[] memory) { return new uint256[](0); }
+}
+
+contract StakingTrackerMockActive {
+    event RefreshStake();
+
+    function CONTRACT_TYPE() external pure returns(string memory) { return "StakingTracker"; }
+    function VERSION() external pure returns(uint256) { return 1; }
+    function refreshStake(address) external { emit RefreshStake(); }
+    function getLiveTrackerIds() external view returns(uint256[] memory) { return new uint256[](1); }
 }
 
 contract StakingTrackerMockWrong {

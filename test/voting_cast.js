@@ -128,6 +128,12 @@ module.exports = function(E) {
       async function check_getQuorum(conf, quorumCount, quorumPower) {
         await conf.deployOnce();
         let vo = await E.deploy(conf);
+        for (const cnsAddr of conf.cnsAddrsList) {
+          const cns = await ethers.getContractAt("CnStakingV2", cnsAddr);
+          let stAddr = await vo.stakingTracker();
+          await cns.connect(E.admin1).submitUpdateStakingTracker(stAddr);
+        }
+
         let pid = await E.must_propose(vo, E.secr1);
         let tally = await vo.getProposalTally(pid);
         expect(tally[3]).to.equal(quorumCount);

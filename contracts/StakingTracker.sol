@@ -97,6 +97,11 @@ contract StakingTracker is IStakingTracker, Ownable {
             address n = nodeIds[i];
             address s = stakingContracts[i];
             address r = rewardAddrs[i];
+
+            if (isCnStakingV2(s) && ICnStakingV2(s).stakingTracker() != address(this)) {
+                continue;
+            }
+
             uint256 balance = getStakingBalance(s);
 
             if (tracker.rewardToNodeId[r] == address(0)) { // fresh rewardAddr
@@ -426,4 +431,5 @@ interface IAddressBook {
 interface ICnStakingV2 {
     function voterAddress() external view returns(address);
     function unstaking() external view returns(uint256);
+    function stakingTracker() external view returns(address);
 }

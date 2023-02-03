@@ -11,16 +11,24 @@ module.exports = function(E) {
 
   describe("StakingTracker", function() {
     let vo;
-    before(async function() {
+    beforeEach(async function() {
       vo = await E.deploy();
     });
 
     it("success by proposal", async function() {
       await E.must_updateStakingTracker(vo, null, E.other1.address);
     });
+    it("reject null address", async function() {
+      await E.revert_updateStakingTracker(vo, null, NULL_ADDR, "Address is null");
+    });
     it("reject direct call", async function() {
       await E.revert_updateStakingTracker(vo, E.secr1, E.other1.address,
         "Not a governance transaction");
+    });
+    it("reject when there is an active tracker", async function() {
+      // live tracker is created by proposing
+      await E.must_propose(vo, E.secr1, {votingDelay: 28*86400});
+      await E.revert_updateStakingTracker(vo, null, E.other1.address, "Cannot update tracker when there is an active tracker");
     });
   }); // StakingTracker
 

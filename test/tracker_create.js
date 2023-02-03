@@ -63,6 +63,10 @@ module.exports = function(E) {
     async function check_create(conf) {
       await conf.deployOnce();
       let st = await E.deploy({ abookAddr: conf.abookAddr });
+      for (const cnsAddr of conf.cnsAddrsList) {
+        const cns = await ethers.getContractAt("CnStakingV2", cnsAddr);
+        await cns.connect(E.admin1).submitUpdateStakingTracker(st.address);
+      }
       let { tid, ts, te } = await E.must_create(st);
       await E.check_tracker(st, tid, conf, ts, te);
       return { st, tid };
@@ -137,6 +141,8 @@ module.exports = function(E) {
 
       // createTracker must succeed even with invalid contracts in AddressBook.
       let st = await E.deploy({ abookAddr: abook.address });
+      let cnsv2 = await ethers.getContractAt("CnStakingV2", cnsOk.address);
+      await cnsv2.connect(E.admin1).submitUpdateStakingTracker(st.address);
       let { tid, ts, te } = await E.must_create(st);
 
       // The tracker must contain exactly one contract.
@@ -158,6 +164,12 @@ module.exports = function(E) {
       let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, toPeb(5e6));
       let cnsv1 = await E.createCnStaking(E.CnStakingV1, NA02, NA09, toPeb(7e6));
       await check_cns_invalid(cnsv2, cnsv1);
+    });
+    it("ignore CnStakingV2 with wrong tracker", async function() {
+      let cnsOk = await E.createCnStaking(E.CnStakingV2, NA01, NA09, toPeb(5e6));
+      // cnsBad.stakingTracker is NULL
+      let cnsBad = await E.createCnStaking(E.CnStakingV2, NA02, NA09, toPeb(7e6));
+      await check_cns_invalid(cnsOk, cnsBad);
     });
   }); // createTracker
 

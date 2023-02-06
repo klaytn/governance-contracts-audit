@@ -95,6 +95,13 @@ module.exports = function(E) {
         await E.revert_updateAccessRule(vo, E.secr1, [F,F,T,T], "No propose access");
         await E.revert_updateAccessRule(vo, E.secr1, [T,T,F,F], "No execute access");
       });
+      it("cannot set secretary null", async function() {
+        await E.must_updateAccessRule(vo, E.secr1, [T,F,T,T]);
+        await E.revert_updateSecretary(vo, null, NULL_ADDR, "No propose access");
+
+        await E.must_updateAccessRule(vo, E.secr1, [T,T,T,F]);
+        await E.revert_updateSecretary(vo, null, NULL_ADDR, "No execute access");
+      });
     }); // updateAccessRule
 
     describe("checkProposeAccess", function() {

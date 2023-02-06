@@ -374,6 +374,7 @@ contract Voting is IVoting {
     function updateSecretary(address newAddr) public override onlyGovernance {
         address oldAddr = secretary;
         secretary = newAddr;
+        validateAccessRule();
         emit UpdateSecretary(oldAddr, newAddr);
     }
 
@@ -396,8 +397,8 @@ contract Voting is IVoting {
 
     function validateAccessRule() internal view {
         AccessRule storage ar = accessRule;
-        require(ar.secretaryPropose || ar.voterPropose, "No propose access");
-        require(ar.secretaryExecute || ar.voterExecute, "No execute access");
+        require((ar.secretaryPropose && secretary != address(0)) || ar.voterPropose, "No propose access");
+        require((ar.secretaryExecute && secretary != address(0)) || ar.voterExecute, "No execute access");
     }
 
     /// @dev Update the timing rule

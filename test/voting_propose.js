@@ -26,6 +26,10 @@ module.exports = function(E) {
         let st = await E.StakingTracker.attach(stAddr);
         expect(await st.owner()).to.equal(vo.address);
       });
+      it("reject null secretary", async function() {
+        await expectRevert(E.Voting.deploy(NULL_ADDR, NULL_ADDR),
+          "No propose access");
+      });
     }); // constructor
 
     describe("constants", function() {

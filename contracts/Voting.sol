@@ -422,8 +422,8 @@ contract Voting is IVoting {
 
     function validateTimingRule() internal view {
         TimingRule storage tr = timingRule;
-        require(tr.minVotingDelay  > 0, "Invalid timing");
-        require(tr.minVotingPeriod > 0, "Invalid timing");
+        require(tr.minVotingDelay  >= 1*DAY, "Invalid timing");
+        require(tr.minVotingPeriod >= 1*DAY, "Invalid timing");
         require(tr.minVotingDelay  <= tr.maxVotingDelay, "Invalid timing");
         require(tr.minVotingPeriod <= tr.maxVotingPeriod, "Invalid timing");
     }

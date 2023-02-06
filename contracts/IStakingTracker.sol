@@ -20,12 +20,12 @@ pragma solidity ^0.8.0;
 interface IStakingTracker {
     // Events
     event CreateTracker(uint256 indexed trackerId,
-                        uint256 trackStart, uint256 trackEnd, address[] nodeIds);
+                        uint256 trackStart, uint256 trackEnd, uint256[] gcIds);
     event RetireTracker(uint256 indexed trackerId);
-    event RefreshStake(uint256 indexed trackerId, address indexed nodeId, address staking,
-                       uint256 stakingBalance, uint256 nodeBalance, uint256 nodeVote,
+    event RefreshStake(uint256 indexed trackerId, uint256 indexed gcId, address staking,
+                       uint256 stakingBalance, uint256 gcBalance, uint256 gcVote,
                        uint256 totalVotes);
-    event RefreshVoter(address indexed nodeId, address staking, address voter);
+    event RefreshVoter(uint256 indexed gcId, address staking, address voter);
 
     // Constants
     function CONTRACT_TYPE() external view returns(string memory);
@@ -46,19 +46,19 @@ interface IStakingTracker {
     function getTrackerSummary(uint256 trackerId) external view returns(
         uint256 trackStart,
         uint256 trackEnd,
-        uint256 numNodes,
+        uint256 numGCs,
         uint256 totalVotes,
-        uint256 eligibleNodes);
-    function getTrackedNode(uint256 trackerId, address nodeId) external view returns(
-        uint256 nodeBalance,
-        uint256 nodeVotes);
-    function getAllTrackedNodes(uint256 trackerId) external view returns(
-        address[] memory nodeIds,
-        uint256[] memory nodeBalances,
-        uint256[] memory nodeVotes);
+        uint256 numEligible);
+    function getTrackedGC(uint256 trackerId, uint256 gcId) external view returns(
+        uint256 gcBalance,
+        uint256 gcVotes);
+    function getAllTrackedGCs(uint256 trackerId) external view returns(
+        uint256[] memory gcIds,
+        uint256[] memory gcBalances,
+        uint256[] memory gcVotes);
 
-    function stakingToNodeId(uint256 trackerId, address staking) external view returns(
-        address nodeId);
-    function voterToNodeId(address voter) external view returns(address nodeId);
-    function nodeIdToVoter(address nodeId) external view returns(address voter);
+    function stakingToGCId(uint256 trackerId, address staking) external view returns(uint256 gcId);
+
+    function voterToGCId(address voter) external view returns(uint256 gcId);
+    function gcIdToVoter(uint256 gcId) external view returns(address voter);
 }

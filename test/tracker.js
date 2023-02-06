@@ -54,14 +54,14 @@ class StakingTrackerTestEnv {
     return new StakingConf(opts, envs)
   };
 
-  async createCnStaking(CnStaking, nodeId, rewardAddr, balance) {
+  async createCnStaking(CnStaking, nodeId, rewardAddr, gcId, balance) {
     let envs = {
       AddressBook: this.AddressBook,
       CnStaking: CnStaking, // custom CnStaking contract
       deployer: this.deployer,
       admin: this.admin1,
     };
-    let cns = new StakingContract(envs, nodeId, rewardAddr, balance);
+    let cns = new StakingContract(envs, nodeId, rewardAddr, gcId, balance);
     await cns.init();
     await setTime((await nowTime()) + 10000);
     await cns.setBalance();
@@ -154,29 +154,29 @@ class StakingTrackerTestEnv {
     let summary = await st.getTrackerSummary(tid);
     if (ts) expect(summary[0]).to.equal(ts);
     if (te) expect(summary[1]).to.equal(te);
-    expect(summary[2]).to.equal(opts.numNodes);
+    expect(summary[2]).to.equal(opts.numGCs);
     expect(summary[3]).to.equal(opts.totalVotes);
-    expect(summary[4]).to.equal(opts.eligibleNodes);
+    expect(summary[4]).to.equal(opts.numEligible);
 
-    let allNodes = await st.getAllTrackedNodes(tid);
-    expect(allNodes[0]).to.equalAddrList(opts.nodeIds);
-    expect(allNodes[1]).to.equalNumberList(_.map(opts.nodeBalances, toPeb));
-    expect(allNodes[2]).to.equalNumberList(opts.nodeVotes);
+    let allGCs = await st.getAllTrackedGCs(tid);
+    expect(allGCs[0]).to.equalNumberList(opts.gcIds);
+    expect(allGCs[1]).to.equalNumberList(_.map(opts.gcBalances, toPeb));
+    expect(allGCs[2]).to.equalNumberList(opts.gcVotes);
 
-    for (var i = 0; i < opts.nodeIds.length; i++) {
-      let nodeInfo = await st.getTrackedNode(tid, opts.nodeIds[i]);
-      expect(nodeInfo[0]).to.equal(toPeb(opts.nodeBalances[i]));
-      expect(nodeInfo[1]).to.equal(opts.nodeVotes[i]);
+    for (var i = 0; i < opts.gcIds.length; i++) {
+      let gcInfo = await st.getTrackedGC(tid, opts.gcIds[i]);
+      expect(gcInfo[0]).to.equal(toPeb(opts.gcBalances[i]));
+      expect(gcInfo[1]).to.equal(opts.gcVotes[i]);
     }
   }
 
-  async check_voter_mapped(st, nodeId, voter) {
-    expect(await st.nodeIdToVoter(nodeId)).to.equal(voter);
-    expect(await st.voterToNodeId(voter)).to.equal(nodeId);
+  async check_voter_mapped(st, gcId, voter) {
+    expect(await st.gcIdToVoter(gcId)).to.equal(voter);
+    expect(await st.voterToGCId(voter)).to.equal(gcId);
   }
-  async check_voter_null(st, nodeId, voter) {
-    expect(await st.nodeIdToVoter(nodeId)).to.equal(NULL_ADDR);
-    expect(await st.voterToNodeId(voter)).to.equal(NULL_ADDR);
+  async check_voter_null(st, gcId, voter) {
+    expect(await st.gcIdToVoter(gcId)).to.equal(NULL_ADDR);
+    expect(await st.voterToGCId(voter)).to.equal(NULL_ADDR);
   }
 }
 
@@ -198,10 +198,10 @@ describe("StakingTracker", function() {
           [2e6, 3e6],  // 5m   -> 1 vote
           [4e6],       // 4m+1 -> 0 votes
         ],
-        nodeIds: [ NA(0,1), NA(1,1), NA(2,1), NA(3,1), NA(4,1) ],
-        nodeBalances: [ 20e6, 10e6, 5e6+1, 5e6, 4e6 ],
-        nodeVotes: [ 3, 2, 1, 1, 0 ],
-        numNodes: 5, totalVotes: 7, eligibleNodes: 4,
+        gcIds: [ 700, 701, 702, 703, 704 ],
+        gcBalances: [ 20e6, 10e6, 5e6+1, 5e6, 4e6 ],
+        gcVotes: [ 3, 2, 1, 1, 0 ],
+        numGCs: 5, totalVotes: 7, numEligible: 4,
       };
       var conf = E.createConf({ balances: answer.balances });
       expect(conf.opts).to.deep.equal(answer);

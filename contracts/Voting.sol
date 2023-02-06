@@ -17,6 +17,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/utils/Strings.sol";
 import "./IVoting.sol";
 import "./StakingTracker.sol";
 
@@ -49,8 +50,8 @@ contract Voting is IVoting {
         uint256 totalAbstain;
         uint256 quorumCount;
         uint256 quorumPower;
-        address[] voters;
-        mapping(address => Receipt) receipts;
+        uint256[] voters;
+        mapping(uint256 => Receipt) receipts;
     }
 
     struct AccessRule {
@@ -150,8 +151,8 @@ contract Voting is IVoting {
             return;
         } else if (voterAccess) {
             // check that the sender is an eligible voter of the given proposal.
-            (address nodeId, uint256 votes) = getVotes(proposalId, msg.sender);
-            require(nodeId != address(0), "Not a registered voter");
+            (uint256 gcId, uint256 votes) = getVotes(proposalId, msg.sender);
+            require(gcId != 0, "Not a registered voter");
             require(votes > 0, "Not eligible to vote");
         } else {
             revert("Not the secretary");
@@ -265,23 +266,24 @@ contract Voting is IVoting {
             p.quorumPower = quorumPower;
         }
 
-        (address nodeId, uint256 votes) = getVotes(proposalId, msg.sender);
-        require(nodeId != address(0), "Not a registered voter");
+        (uint256 gcId, uint256 votes) = getVotes(proposalId, msg.sender);
+        require(gcId != 0, "Not a registered voter");
         require(votes > 0, "Not eligible to vote");
 
         require(choice == uint8(VoteChoice.Yes) ||
                 choice == uint8(VoteChoice.No) ||
                 choice == uint8(VoteChoice.Abstain), "Not a valid choice");
 
-        require(!p.receipts[nodeId].hasVoted, "Already voted");
-        p.receipts[nodeId].hasVoted = true;
-        p.receipts[nodeId].choice   = choice;
-        p.receipts[nodeId].votes    = votes;
+        require(!p.receipts[gcId].hasVoted, "Already voted");
+        p.receipts[gcId].hasVoted = true;
+        p.receipts[gcId].choice   = choice;
+        p.receipts[gcId].votes    = votes;
 
         incrementTally(proposalId, choice, votes);
-        p.voters.push(nodeId);
+        p.voters.push(gcId);
 
-        emit VoteCast(nodeId, proposalId, choice, votes, "");
+        emit VoteCast(msg.sender, proposalId, choice, votes,
+                      Strings.toHexString(gcId, 32));
     }
 
     function incrementTally(uint256 proposalId, uint8 choice, uint256 votes) private {
@@ -490,28 +492,28 @@ contract Voting is IVoting {
             return (p.quorumCount, p.quorumPower);
         }
 
-        ( , , , uint256 totalVotes, uint256 eligibleNodes) =
+        ( , , , uint256 totalVotes, uint256 numEligible) =
             IStakingTracker(p.stakingTracker).getTrackerSummary(p.trackerId);
 
-        quorumCount = (eligibleNodes + 2) / 3; // more than or equal to 1/3 of all GC members
+        quorumCount = (numEligible + 2) / 3; // more than or equal to 1/3 of all GC members
         quorumPower = (totalVotes + 2) / 3; // more than or equal to 1/3 of all voting powers
         return (quorumCount, quorumPower);
     }
 
-    /// @dev Resolve the voter account into its nodeId and voting powers
-    /// Returns the currently assigned nodeId. Returns the voting powers
-    /// effective at the given proposal. Returns zero nodeId and 0 votes
-    /// if the voter account is not assigned to any eligible node.
+    /// @dev Resolve the voter account into its gcId and voting powers
+    /// Returns the currently assigned gcId. Returns the voting powers
+    /// effective at the given proposal. Returns zero gcId and 0 votes
+    /// if the voter account is not assigned to any eligible GC.
     ///
     /// @param proposalId  The proposal id
-    /// @return nodeId  The nodeId assigned to this voter account
+    /// @return gcId    The gcId assigned to this voter account
     /// @return votes   The amount of voting powers the voter account represents
     function getVotes(uint256 proposalId, address voter) public view override returns(
-        address nodeId, uint256 votes) {
+        uint256 gcId, uint256 votes) {
         Proposal storage p = proposals[proposalId];
 
-        nodeId = IStakingTracker(p.stakingTracker).voterToNodeId(voter);
-        ( , votes) = IStakingTracker(p.stakingTracker).getTrackedNode(p.trackerId, nodeId);
+        gcId = IStakingTracker(p.stakingTracker).voterToGCId(voter);
+        ( , votes) = IStakingTracker(p.stakingTracker).getTrackedGC(p.trackerId, gcId);
     }
 
     /// @dev General contents of a proposal
@@ -570,7 +572,7 @@ contract Voting is IVoting {
         uint256 totalAbstain,
         uint256 quorumCount,
         uint256 quorumPower,
-        address[] memory voters)
+        uint256[] memory voters)
     {
         Proposal storage p = proposals[proposalId];
         (quorumCount, quorumPower) = getQuorum(proposalId);
@@ -583,30 +585,42 @@ contract Voting is IVoting {
     }
 
     /// @dev Individual vote receipt
-    function getReceipt(uint256 proposalId, address nodeId)
-        external view override returns(Receipt memory)
+    function getReceipt(uint256 proposalId, uint256 gcId) external view override returns(
+        bool hasVoted,
+        uint8 choice,
+        uint256 votes)
     {
         Proposal storage p = proposals[proposalId];
-        return p.receipts[nodeId];
+        Receipt storage r = p.receipts[gcId];
+        return (r.hasVoted,
+                r.choice,
+                r.votes);
     }
 
     function getTrackerSummary(uint256 proposalId) external view override returns(
         uint256 trackStart,
         uint256 trackEnd,
-        uint256 numNodes,
+        uint256 numGCs,
         uint256 totalVotes,
-        uint256 eligibleNodes)
+        uint256 numEligible)
     {
         Proposal storage p = proposals[proposalId];
         return IStakingTracker(p.stakingTracker).getTrackerSummary(p.trackerId);
     }
 
-    function getAllTrackedNodes(uint256 proposalId) external view override returns(
-        address[] memory nodeIds,
-        uint256[] memory nodeBalances,
-        uint256[] memory nodeVotes)
+    function getAllTrackedGCs(uint256 proposalId) external view override returns(
+        uint256[] memory gcIds,
+        uint256[] memory gcBalances,
+        uint256[] memory gcVotes)
     {
         Proposal storage p = proposals[proposalId];
-        return IStakingTracker(p.stakingTracker).getAllTrackedNodes(p.trackerId);
+        return IStakingTracker(p.stakingTracker).getAllTrackedGCs(p.trackerId);
+    }
+
+    function voterToGCId(address voter) external view override returns(uint256 gcId) {
+        return IStakingTracker(stakingTracker).voterToGCId(voter);
+    }
+    function gcIdToVoter(uint256 gcId) external view override returns(address voter) {
+        return IStakingTracker(stakingTracker).gcIdToVoter(gcId);
     }
 }

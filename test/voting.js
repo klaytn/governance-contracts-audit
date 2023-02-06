@@ -144,19 +144,19 @@ class VotingTestEnv {
     return await this.StakingTracker.attach(stAddr);
   }
 
-  async appointVoter(conf, nodeIdx, voter) {
+  async appointVoter(conf, index, voter) {
     let voterAddr = voter.address || voter;
-    let nodeId    = numericAddr(nodeIdx, 1);
+    let gcId      = 700 + index;
     let stAddr    = conf.stAddr;
     let st        = await this.StakingTracker.attach(stAddr);
-    let cnsAddr   = conf.cnsAddrs[nodeIdx][0];
+    let cnsAddr   = conf.cnsAddrs[index][0];
     let cns       = await this.CnStakingV2.attach(cnsAddr);
 
     await expect(cns.connect(this.admin1).submitUpdateStakingTracker(stAddr))
       .to.emit(cns, "UpdateStakingTracker").withArgs(stAddr);
     await expect(cns.connect(this.admin1).submitUpdateVoterAddress(voterAddr))
       .to.emit(cns, "UpdateVoterAddress").withArgs(voterAddr)
-      .to.emit(st, "RefreshVoter").withArgs(nodeId, cnsAddr, voterAddr);
+      .to.emit(st, "RefreshVoter").withArgs(gcId, cnsAddr, voterAddr);
   }
 
   // Propose
@@ -235,7 +235,7 @@ class VotingTestEnv {
     return vo.connect(sender).castVote(pid, choice);
   }
   async must_vote(vo, sender, pid, choice) {
-    let { nodeId, votes } = await vo.getVotes(pid, sender.address);
+    let [ gcId, votes ] = await vo.getVotes(pid, sender.address);
 
     if (_.isString(choice)) {
       choice = this.Choice[choice];
@@ -248,17 +248,17 @@ class VotingTestEnv {
     let pre = await vo.getProposalTally(pid);
 
     await expect(this.tx_vote(vo, sender, pid, choice))
-      .to.emit(vo, "VoteCast").withArgs(nodeId, pid, choice, votes, "");
+      .to.emit(vo, "VoteCast").withArgs(sender.address, pid, choice, votes, gcId);
 
     let post = await vo.getProposalTally(pid);
-    let voteRc = await vo.getReceipt(pid, nodeId);
+    let voteRc = await vo.getReceipt(pid, gcId);
 
     expect(post[0]).to.equal(pre[0].add(deltaYes));     // totalYes += deltaYes
     expect(post[1]).to.equal(pre[1].add(deltaNo));      // totalYes += deltaYes
     expect(post[2]).to.equal(pre[2].add(deltaAbstain)); // totalYes += deltaYes
     expect(post[3]).to.equal(pre[3]);                   // quorumCount unchanged
     expect(post[4]).to.equal(pre[4]);                   // quorumPower unchanged
-    expect(post[5]).to.equalAddrList(_.concat(pre[5], nodeId)); // voters += nodeId
+    expect(post[5]).to.equalNumberList(_.concat(pre[5], gcId)); // voters += gcId
 
     expect(voteRc[0]).to.equal(true); // hasVoted
     expect(voteRc[1]).to.equal(choice);
@@ -449,12 +449,10 @@ class VotingTestEnv {
     expect(await vo.state(pid)).to.equal(state);
   }
 
-  async check_nodeVotes(vo, pid, voterAddr, expectedVotes, expectedNodeId) {
-    var { nodeId, votes } = await vo.getVotes(pid, voterAddr);
+  async check_getVotes(vo, pid, voterAddr, expectedVotes, expectedGCId) {
+    var [ gcId, votes ] = await vo.getVotes(pid, voterAddr);
     expect(votes).to.equal(expectedVotes);
-    if (expectedNodeId) {
-      expect(nodeId).to.equal(expectedNodeId);
-    }
+    expect(gcId).to.equal(expectedGCId);
   }
 
   async check_accessRule(vo, answer) {

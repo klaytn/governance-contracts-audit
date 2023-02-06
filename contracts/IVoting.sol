@@ -121,7 +121,7 @@ interface IVoting {
     function lastProposalId() external view returns(uint256);
     function state(uint256 proposalId) external view returns(ProposalState);
     function checkQuorum(uint256 proposalId) external view returns(bool);
-    function getVotes(uint256 proposalId, address voter) external view returns(address, uint256);
+    function getVotes(uint256 proposalId, address voter) external view returns(uint256, uint256);
 
     function getProposalContent(uint256 proposalId) external view returns(
         uint256 id,
@@ -147,17 +147,21 @@ interface IVoting {
         uint256 totalAbstain,
         uint256 quorumCount,
         uint256 quorumPower,
-        address[] memory voters);
-    function getReceipt(uint256 proposalId, address voter)
-        external view returns(Receipt memory);
+        uint256[] memory voters);
+    function getReceipt(uint256 proposalId, uint256 voter) external view returns(
+        bool hasVoted,
+        uint8 choice,
+        uint256 votes);
     function getTrackerSummary(uint256 proposalId) external view returns(
         uint256 trackStart,
         uint256 trackEnd,
-        uint256 numNodes,
+        uint256 numGCs,
         uint256 totalVotes,
-        uint256 eligibleNodes);
-    function getAllTrackedNodes(uint256 proposalId) external view returns(
-        address[] memory nodeIds,
-        uint256[] memory nodeBalances,
-        uint256[] memory nodeVotes);
+        uint256 numEligible);
+    function getAllTrackedGCs(uint256 proposalId) external view returns(
+        uint256[] memory gcIds,
+        uint256[] memory gcBalances,
+        uint256[] memory gcVotes);
+    function voterToGCId(address voter) external view returns(uint256 gcId);
+    function gcIdToVoter(uint256 gcId) external view returns(address voter);
 }

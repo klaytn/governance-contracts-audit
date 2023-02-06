@@ -31,7 +31,7 @@ module.exports = function(E) {
         expect(tally[0]).to.equal(3);
         expect(tally[1]).to.equal(2);
         expect(tally[2]).to.equal(1);
-        expect(tally[5]).to.equalAddrList([NA01,NA11,NA21]);
+        expect(tally[5]).to.equalNumberList([700,701,702]);
       });
       it("change voter before vote", async function() {
         await E.appointVoter(E.conf5cn, 3, E.other1);
@@ -142,25 +142,25 @@ module.exports = function(E) {
 
       it("success conf1cn", async function() {
         // [1] votes.
-        // eligibleNodes = 1 => quorumCount = 1
+        // numEligible   = 1 => quorumCount = 1
         // totalVotes    = 1 => quorumPower = 1
         await check_getQuorum(E.conf1cn, 1, 1);
       });
       it("success conf3cn", async function() {
         // [2,2,1] votes.
-        // eligibleNodes = 3 => quorumCount = 1
+        // numEligible   = 3 => quorumCount = 1
         // totalVotes    = 5 => quorumPower = 2
         await check_getQuorum(E.conf3cn, 1, 2);
       });
       it("success conf5cn", async function() {
         // [3,2,1,1,0] votes.
-        // eligibleNodes = 4 => quorumCount = 2
+        // numEligible   = 4 => quorumCount = 2
         // totalVotes    = 7 => quorumPower = 3
         await check_getQuorum(E.conf5cn, 2, 3);
       });
       it("success conf50cn", async function() {
         // [1,..,1] votes.
-        // eligibleNodes = 50 => quorumCount = 17
+        // numEligible   = 50 => quorumCount = 17
         // totalVotes    = 50 => quorumPower = 17
         await check_getQuorum(E.conf50cn, 17, 17);
       });
@@ -170,22 +170,22 @@ module.exports = function(E) {
       it("success conf1cn", async function() {
         let vo = await E.deploy(E.conf1cn);
         let pid = await E.must_propose(vo, E.secr1);
-        await E.check_nodeVotes(vo, pid, E.voter1.address, 1, NA01);
+        await E.check_getVotes(vo, pid, E.voter1.address, 1, 700);
       });
       it("success conf5cn", async function() {
         let vo = await E.deploy(E.conf5cn);
         let pid = await E.must_propose(vo, E.secr1);
-        await E.check_nodeVotes(vo, pid, E.voter1.address, 3, NA01);
-        await E.check_nodeVotes(vo, pid, E.voter2.address, 2, NA11);
-        await E.check_nodeVotes(vo, pid, E.voter3.address, 1, NA21);
-        await E.check_nodeVotes(vo, pid, E.voter4.address, 1, NA31);
-        await E.check_nodeVotes(vo, pid, E.voter5.address, 0, NA41);
+        await E.check_getVotes(vo, pid, E.voter1.address, 3, 700);
+        await E.check_getVotes(vo, pid, E.voter2.address, 2, 701);
+        await E.check_getVotes(vo, pid, E.voter3.address, 1, 702);
+        await E.check_getVotes(vo, pid, E.voter4.address, 1, 703);
+        await E.check_getVotes(vo, pid, E.voter5.address, 0, 704);
       });
       it("reject non-voter", async function() {
         let vo = await E.deploy(E.conf1cn);
         let pid = await E.must_propose(vo, E.secr1);
-        await E.check_nodeVotes(vo, pid, E.secr1.address, 0, NULL_ADDR);
-        await E.check_nodeVotes(vo, pid, E.other1.address, 0, NULL_ADDR);
+        await E.check_getVotes(vo, pid, E.secr1.address, 0, 0);
+        await E.check_getVotes(vo, pid, E.other1.address, 0, 0);
       });
     }); // getVotes
   }); // quorum

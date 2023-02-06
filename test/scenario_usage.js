@@ -35,7 +35,7 @@ module.exports = function(E) {
       let stAddr = await vo.stakingTracker();
 
       /// -- 4. Register a V2 to AB
-      let cnsv2 = await E.cnsDeployV2(NA02, NA09, stAddr);
+      let cnsv2 = await E.cnsDeployV2(NA02, NA09, 1, stAddr);
       await abook.mockRegisterCnStakingContracts([NA02], [cnsv2.address], [NA09]);
 
       /// -- 5. Transfer stakes from V1 to V2
@@ -62,9 +62,9 @@ module.exports = function(E) {
       let stAddr = st.address;
 
       /// -- 2. Setup CN staking contracts
-      let cns1 = await E.cnsDeployV2(NA01, NA09, stAddr); // CN1
-      let cns2 = await E.cnsDeployV2(NA11, NA19, stAddr); // CN2
-      let cns3 = await E.cnsDeployV2(NA21, NA29, stAddr); // CN3
+      let cns1 = await E.cnsDeployV2(NA01, NA09, 1, stAddr); // CN1
+      let cns2 = await E.cnsDeployV2(NA11, NA19, 2, stAddr); // CN2
+      let cns3 = await E.cnsDeployV2(NA21, NA29, 3, stAddr); // CN3
       await abook.mockRegisterCnStakingContracts(
         [NA01, NA11, NA21], [cns1.address, cns2.address, cns3.address], [NA09, NA19, NA29]);
 

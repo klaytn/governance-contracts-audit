@@ -142,9 +142,9 @@ module.exports = function(E) {
         let tracker = await Tracker.deploy();
         await tracker.mockSetAddressBookAddress(abook.address);
 
-        let [nodeA, nodeB, rewardA, rewardB] = [NA(0,1), NA(1,1), NA(0,9), NA(1,9)];
-        let cnsA = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeA, rewardAddr: rewardA });
-        let cnsB = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeB, rewardAddr: rewardB });
+        let [nodeA, nodeB, rewardA, rewardB, gcA, gcB] = [NA(0,1), NA(1,1), NA(0,9), NA(1,9), 700, 701];
+        let cnsA = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeA, rewardAddr: rewardA, gcId: gcA });
+        let cnsB = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeB, rewardAddr: rewardB, gcId: gcB });
         await abook.mockRegisterCnStakingContracts(
           [nodeA, nodeB],
           [cnsA.address, cnsB.address],
@@ -152,10 +152,10 @@ module.exports = function(E) {
 
         let voter = RAND_ADDR;
         await expect(tx_update(cnsA, voter)).to.emit(tracker, "RefreshVoter");
-        expect(await tracker.voterToNodeId(voter)).to.equal(nodeA); // voter -> nodeA mapping created
+        expect(await tracker.voterToGCId(voter)).to.equal(gcA); // voter -> gcA mapping created
 
         await expectRevert(tx_update(cnsB, voter), "Voter address already taken");
-        expect(await tracker.voterToNodeId(voter)).to.equal(nodeA); // voter -> nodeA mapping retained
+        expect(await tracker.voterToGCId(voter)).to.equal(gcA); // voter -> gcA mapping retained
       });
       it("reject voter already taken concurrent", async function() {
         let ABook = await ethers.getContractFactory("AddressBookMock");
@@ -166,9 +166,9 @@ module.exports = function(E) {
         let tracker = await Tracker.deploy();
         await tracker.mockSetAddressBookAddress(abook.address);
 
-        let [nodeA, nodeB, rewardA, rewardB] = [NA(0,1), NA(1,1), NA(0,9), NA(1,9)];
-        let cnsA = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeA, rewardAddr: rewardA });
-        let cnsB = await E.deployInit({ req: 2, tracker: tracker.address, nodeId: nodeB, rewardAddr: rewardB });
+        let [nodeA, nodeB, rewardA, rewardB, gcA, gcB] = [NA(0,1), NA(1,1), NA(0,9), NA(1,9), 700, 701];
+        let cnsA = await E.deployInit({ req: 1, tracker: tracker.address, nodeId: nodeA, rewardAddr: rewardA, gcId: gcA });
+        let cnsB = await E.deployInit({ req: 2, tracker: tracker.address, nodeId: nodeB, rewardAddr: rewardB, gcId: gcB });
         await abook.mockRegisterCnStakingContracts(
           [nodeA, nodeB],
           [cnsA.address, cnsB.address],
@@ -180,12 +180,12 @@ module.exports = function(E) {
 
         // In the meantime, other CN takes the voter address
         await expect(tx_update(cnsA, voter)).to.emit(tracker, "RefreshVoter");
-        expect(await tracker.voterToNodeId(voter)).to.equal(nodeA); // voter -> nodeA mapping created
+        expect(await tracker.voterToGCId(voter)).to.equal(gcA); // voter -> gcA mapping created
 
         // updateVoterAddress fails
         await expect(E.tx_confirm(cnsB, E.admin2, 0, 'UpdateVoterAddress', [voter]))
           .to.emit(cnsB, "ExecuteRequestFailure");
-        expect(await tracker.voterToNodeId(voter)).to.equal(nodeA); // voter -> nodeA mapping retained
+        expect(await tracker.voterToGCId(voter)).to.equal(gcA); // voter -> gcA mapping retained
       });
 
 

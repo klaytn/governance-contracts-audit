@@ -85,6 +85,7 @@ class CnsTestEnv {
   get amounts() { return [this.amount1, this.amount2]; }
   get initDepositAmount() { return addPebs(this.amount1, this.amount2); }
   get trackerAddr() { return this.tracker.address; }
+  get gcId() { return 700; }
 
   // Deploy and init
 
@@ -101,6 +102,7 @@ class CnsTestEnv {
     opts.times      = opts.times      || [now+100, now+200];
     opts.amounts    = opts.amounts    || this.amounts;
     // opts.tracker is empty by default
+    opts.gcId       = opts.gcId       || this.gcId;
     return opts;
   }
 
@@ -116,6 +118,9 @@ class CnsTestEnv {
 
     if (opts.tracker) {
       await cns.connect(opts.sender).setStakingTracker(opts.tracker);
+    }
+    if (parseInt(await cns.VERSION()) >= 2) {
+      await cns.connect(opts.sender).setGCId(opts.gcId);
     }
 
     await cns.connect(opts.sender).reviewInitialConditions();
@@ -146,6 +151,17 @@ class CnsTestEnv {
   }
   async revert_setStakingTracker(cns, sender, trackerAddr, msg) {
     await expect(cns.connect(sender).setStakingTracker(trackerAddr))
+      .to.be.revertedWith(msg);
+  }
+
+  async must_setGCId(cns, sender, gcId) {
+    await expect(cns.connect(sender).setGCId(gcId))
+      .to.emit(cns, "UpdateGCId").withArgs(gcId);
+
+    expect(await cns.gcId()).to.equal(gcId);
+  }
+  async revert_setGCId(cns, sender, gcId, msg) {
+    await expect(cns.connect(sender).setGCId(gcId))
       .to.be.revertedWith(msg);
   }
 
@@ -264,6 +280,10 @@ class CnsTestEnv {
     eventKinds = eventKinds || "";
     confirmers = _.map((confirmers || []), (elem) => (elem.address || elem));
 
+    if (!eventKinds) {
+      // There must be at least one assertion for `await expect(tx)` to be executed.
+      e = e.to.be.not.reverted;
+    }
     for (var kind of eventKinds.split(',')) {
       if (kind == "submit") {
         e = e.to.emit(cns, "SubmitRequest").withArgs(id, sender, func, a1, a2, a3);

@@ -30,13 +30,13 @@ module.exports = function(E) {
 
       /// -- 2. Register the first (old) V2 to AB
       // Stake 5m KLAY, Appoint voter1
-      let cnsOld = await E.cnsDeployV2(NA01, NA09, stAddr);
+      let cnsOld = await E.cnsDeployV2(NA01, NA09, 1, stAddr);
       await abook.mockRegisterCnStakingContracts([NA01], [cnsOld.address], [NA09]);
       await E.cnsStake(cnsOld, toPeb(5000000));
       await E.cnsUpdateVoter(cnsOld, E.voter1.address);
 
       /// -- 3. Register the second (new) V2 to AB
-      let cnsNew = await E.cnsDeployV2(NA02, NA09, stAddr);
+      let cnsNew = await E.cnsDeployV2(NA02, NA09, 1, stAddr);
       await abook.mockRegisterCnStakingContracts([NA02], [cnsNew.address], [NA09]);
 
       /// -- 4. Transfer stakes from the old to new V2.
@@ -66,7 +66,7 @@ module.exports = function(E) {
 
       /// -- 2. Register a V2 to AB
       // Stake 5m KLAY, Appoint voter1
-      let cns = await E.cnsDeployV2(NA01, NA09, stOldAddr);
+      let cns = await E.cnsDeployV2(NA01, NA09, 1, stOldAddr);
       await abook.mockRegisterCnStakingContracts([NA01], [cns.address], [NA09]);
       await E.cnsStake(cns, toPeb(5000000));
       await E.cnsUpdateVoter(cns, E.voter1.address);
@@ -117,7 +117,7 @@ module.exports = function(E) {
 
       /// -- 2. Register a V2 to AB
       // Stake 5m KLAY, Appoint voter1
-      let cns = await E.cnsDeployV2(NA01, NA09, stAddr);
+      let cns = await E.cnsDeployV2(NA01, NA09, 1, stAddr);
       await abook.mockRegisterCnStakingContracts([NA01], [cns.address], [NA09]);
       await E.cnsStake(cns, toPeb(5000000));
       await E.cnsUpdateVoter(cns, E.voter1.address);
@@ -163,7 +163,7 @@ module.exports = function(E) {
 
       /// -- 2. Register a V2 to AB
       // Stake 5m KLAY, Appoint voter1
-      let cns = await E.cnsDeployV2(NA01, NA09, stOld.address);
+      let cns = await E.cnsDeployV2(NA01, NA09, 1, stOld.address);
       await abook.mockRegisterCnStakingContracts([NA01], [cns.address], [NA09]);
       await E.cnsStake(cns, toPeb(5000000));
       await E.cnsUpdateVoter(cns, E.voter1.address);
@@ -198,7 +198,7 @@ module.exports = function(E) {
 
       /// -- 2. Register a V2 to AB
       // Stake 5m KLAY, Appoint voter1
-      let cns = await E.cnsDeployV2(NA01, NA09, st.address);
+      let cns = await E.cnsDeployV2(NA01, NA09, 1, st.address);
       await abook.mockRegisterCnStakingContracts([NA01], [cns.address], [NA09]);
       await E.cnsStake(cns, toPeb(5000000));
       await E.cnsUpdateVoter(cns, E.voter1.address);

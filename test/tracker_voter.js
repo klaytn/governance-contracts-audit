@@ -18,13 +18,13 @@ module.exports = function(E) {
     function tx_update(cns, voter) {
       return cns.connect(E.admin1).submitUpdateVoterAddress(voter);
     }
-    async function must_update_refresh(st, cns, nodeId, voterAddr) {
+    async function must_update_refresh(st, cns, gcId, voterAddr) {
       await expect(tx_update(cns, voterAddr))
         .to.emit(cns, "UpdateVoterAddress").withArgs(voterAddr)
-        .to.emit(st, "RefreshVoter").withArgs(nodeId, cns.address, voterAddr);
+        .to.emit(st, "RefreshVoter").withArgs(gcId, cns.address, voterAddr);
       expect(await cns.voterAddress()).to.equal(voterAddr);
     }
-    async function must_update_norefresh(st, cns, nodeId, voterAddr) {
+    async function must_update_norefresh(st, cns, gcId, voterAddr) {
       await expect(tx_update(cns, voterAddr))
         .to.emit(cns, "UpdateVoterAddress").withArgs(voterAddr)
         .to.not.emit(st, "RefreshVoter");
@@ -34,9 +34,9 @@ module.exports = function(E) {
     function tx_refresh(st, cnsAddr) {
       return st.connect(E.other1).refreshVoter(cnsAddr);
     }
-    async function must_refresh(st, cnsAddr, nodeId, voterAddr) {
+    async function must_refresh(st, cnsAddr, gcId, voterAddr) {
       await expect(tx_refresh(st, cnsAddr))
-        .to.emit(st, "RefreshVoter").withArgs(nodeId, cnsAddr, voterAddr);
+        .to.emit(st, "RefreshVoter").withArgs(gcId, cnsAddr, voterAddr);
     }
     async function revert_refresh(st, cnsAddr, msg) {
       await expectRevert(tx_refresh(st, cnsAddr), msg);
@@ -44,39 +44,39 @@ module.exports = function(E) {
 
     it("success map", async function() {
       let { st, cns0 } = await E.deploy_get_cns0(E.conf1cn);
-      let [ nodeId, voter ] = [ NA01, RAND_ADDR ];
-      await E.check_voter_null(st, nodeId, voter);
+      let [ gcId, voter ] = [ 700, RAND_ADDR ];
+      await E.check_voter_null(st, gcId, voter);
 
-      await must_update_refresh(st, cns0, nodeId, voter);
-      await E.check_voter_mapped(st, nodeId, voter);
+      await must_update_refresh(st, cns0, gcId, voter);
+      await E.check_voter_mapped(st, gcId, voter);
     });
     it("success unmap", async function() {
       let { st, cns0 } = await E.deploy_get_cns0(E.conf1cn);
-      let [ nodeId, voter ] = [ NA01, RAND_ADDR ];
-      await E.check_voter_null(st, nodeId, voter);
+      let [ gcId, voter ] = [ 700, RAND_ADDR ];
+      await E.check_voter_null(st, gcId, voter);
 
-      await must_update_refresh(st, cns0, nodeId, voter);
-      await E.check_voter_mapped(st, nodeId, voter);
+      await must_update_refresh(st, cns0, gcId, voter);
+      await E.check_voter_mapped(st, gcId, voter);
 
-      await must_update_refresh(st, cns0, nodeId, NULL_ADDR);
-      await E.check_voter_null(st, nodeId, voter);
+      await must_update_refresh(st, cns0, gcId, NULL_ADDR);
+      await E.check_voter_null(st, gcId, voter);
     });
     it("trigger by explicit refresh call", async function() {
       let { st, cns0 } = await E.deploy_get_cns0(E.conf1cn, false);
-      let [ nodeId, voter ] = [ NA01, RAND_ADDR ];
-      await E.check_voter_null(st, nodeId, voter);
+      let [ gcId, voter ] = [ 700, RAND_ADDR ];
+      await E.check_voter_null(st, gcId, voter);
 
-      await must_update_norefresh(st, cns0, nodeId, voter); // refreshVoter not called
-      await E.check_voter_null(st, nodeId, voter);
+      await must_update_norefresh(st, cns0, gcId, voter); // refreshVoter not called
+      await E.check_voter_null(st, gcId, voter);
 
-      await must_refresh(st, cns0.address, nodeId, voter); // applied by explicit refresh
-      await E.check_voter_mapped(st, nodeId, voter);
+      await must_refresh(st, cns0.address, gcId, voter); // applied by explicit refresh
+      await E.check_voter_mapped(st, gcId, voter);
 
-      await must_refresh(st, cns0.address, nodeId, voter); // can call again
-      await E.check_voter_mapped(st, nodeId, voter);
+      await must_refresh(st, cns0.address, gcId, voter); // can call again
+      await E.check_voter_mapped(st, gcId, voter);
     });
     it("overwrite by sister staking contract", async function() {
-      let conf = E.createConf({ // One node owns two CnStaking, cns0 and cns1.
+      let conf = E.createConf({ // One GC owns two CnStaking, cns0 and cns1.
         balances: [ [1, 5e6] ],
       });
       await conf.deploy();
@@ -84,22 +84,22 @@ module.exports = function(E) {
       let st = await E.deploy(conf);
       let cns0 = await E.get_cns(conf, 0, 0, st);
       let cns1 = await E.get_cns(conf, 0, 1, st);
-      let [ nodeId, voterA, voterB ] = [ NA01, E.voter1.address, E.voter2.address ];
+      let [ gcId, voterA, voterB ] = [ 700, E.voter1.address, E.voter2.address ];
 
-      // Set (nodeId <-> voterA) via cns0.
-      await must_update_refresh(st, cns0, nodeId, voterA);
-      await E.check_voter_mapped(st, nodeId, voterA);
+      // Set (gcId <-> voterA) via cns0.
+      await must_update_refresh(st, cns0, gcId, voterA);
+      await E.check_voter_mapped(st, gcId, voterA);
 
-      // Set (nodeId <-> voterB) via cns1.
-      await must_update_refresh(st, cns1, nodeId, voterB);
-      await E.check_voter_mapped(st, nodeId, voterB);
+      // Set (gcId <-> voterB) via cns1.
+      await must_update_refresh(st, cns1, gcId, voterB);
+      await E.check_voter_mapped(st, gcId, voterB);
 
       // But each cns contracts has different voters
       expect(await cns0.voterAddress()).to.equal(voterA);
       expect(await cns1.voterAddress()).to.equal(voterB);
     });
     it("reject duplicate voter address", async function() {
-      let conf = E.createConf({ // Two nodes own one CnStaking each, cns0 and cns1.
+      let conf = E.createConf({ // Two GCs own one CnStaking each, cns0 and cns1.
         balances: [ [5e6], [5e6] ],
       });
       await conf.deploy();
@@ -107,23 +107,23 @@ module.exports = function(E) {
       let st = await E.deploy(conf);
       let cns0 = await E.get_cns(conf, 0, 0, st);
       let cns1 = await E.get_cns(conf, 1, 0, st);
-      let [ node0, node1, voter ] = [ NA01, NA11, E.voter1.address ];
+      let [ gc0, gc1, voter ] = [ 700, 701, E.voter1.address ];
 
-      // Set (node0 <-> voter) via cns0.
-      await must_update_refresh(st, cns0, node0, voter);
+      // Set (gc0 <-> voter) via cns0.
+      await must_update_refresh(st, cns0, gc0, voter);
 
-      // Try to set (node1 <-> voter) via cns1.
+      // Try to set (gc1 <-> voter) via cns1.
       // cns1.submitUpdateVoterAddress() fails.
       await expectRevert(tx_update(cns1, voter), "Voter address already taken");
 
-      expect(await st.nodeIdToVoter(node0)).to.equal(voter); // node0 -> voter
-      expect(await st.voterToNodeId(voter)).to.equal(node0); // voter -> node0
-      expect(await st.nodeIdToVoter(node1)).to.equal(NULL_ADDR); // node0 -> NULL
+      expect(await st.gcIdToVoter(700)).to.equal(voter); // gc0 -> voter
+      expect(await st.voterToGCId(voter)).to.equal(700); // voter -> gc0
+      expect(await st.gcIdToVoter(701)).to.equal(NULL_ADDR); // gc1 -> NULL
     });
     it("reject non-registered", async function() {
       let st = await E.deploy(E.conf1cn);
       // Note that this fresh cnsv2 is not registered in AddressBook.
-      let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, toPeb(5e6));
+      let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, 1, toPeb(5e6));
 
       await revert_refresh(st, cnsv2.address, "Not a staking contract");
     });
@@ -142,7 +142,7 @@ module.exports = function(E) {
       await revert_refresh(st, invalid.address, "Invalid CnStaking contract");
     });
     it("reject CnStakingV1", async function() {
-      let cnsv1 = await E.createCnStaking(E.CnStakingV1, NA02, NA09, toPeb(7e6));
+      let cnsv1 = await E.createCnStaking(E.CnStakingV1, NA02, NA09, 1, toPeb(7e6));
       let abook = await E.createAbook([NA01], [cnsv1.address], [NA09]);
       let st = await E.deploy({ abookAddr: abook.address });
 

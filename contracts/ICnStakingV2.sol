@@ -43,6 +43,7 @@ interface ICnStakingV2 {
     event UpdateRewardAddress(address rewardAddress);
     event UpdateStakingTracker(address stakingTracker);
     event UpdateVoterAddress(address voterAddress);
+    event UpdateGCId(uint256 gcId);
 
     // Public functions
     event StakeKlay(address from, uint256 value);
@@ -77,6 +78,7 @@ interface ICnStakingV2 {
 
     // Initialization
     function setStakingTracker(address _tracker) external;
+    function setGCId(uint256 _gcId) external;
     function reviewInitialConditions() external;
     function depositLockupStakingAndInit() external payable;
 
@@ -117,6 +119,7 @@ interface ICnStakingV2 {
     function acceptRewardAddress(address _rewardAddress) external;
 
     // Getters
+    function gcId() external view returns(uint256);
     function nodeId() external view returns(address);
     function rewardAddress() external view returns(address);
     function pendingRewardAddress() external view returns(address);

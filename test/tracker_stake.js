@@ -22,24 +22,24 @@ module.exports = function(E) {
       // confs starting from (1,1,1)
       conf111 = E.createConf({
         balances:     [ [5e6], [5e6], [5e6] ],
-        nodeVotes:    [ 1,     1,     1     ],
-        numNodes: 3, totalVotes: 3, eligibleNodes: 3,
+        gcVotes:      [ 1,     1,     1     ],
+        numGCs: 3, totalVotes: 3, numEligible: 3,
       });
       conf211 = E.createConf({
         balances:     [ [10e6], [5e6], [5e6] ],
-        nodeVotes:    [ 2,      1,     1     ],
-        numNodes: 3, totalVotes: 4, eligibleNodes: 3,
+        gcVotes:      [ 2,      1,     1     ],
+        numGCs: 3, totalVotes: 4, numEligible: 3,
       });
       // configs starting from (2,2,2)
       conf222 = E.createConf({
         balances:     [ [10e6], [10e6], [10e6] ],
-        nodeVotes:    [ 2,      2,      2      ],
-        numNodes: 3, totalVotes: 6, eligibleNodes: 3,
+        gcVotes:      [ 2,      2,      2      ],
+        numGCs: 3, totalVotes: 6, numEligible: 3,
       });
       conf122 = E.createConf({
         balances:     [ [5e6], [10e6], [10e6] ],
-        nodeVotes:    [ 1,     2,      2      ],
-        numNodes: 3, totalVotes: 5, eligibleNodes: 3,
+        gcVotes:      [ 1,     2,      2      ],
+        numGCs: 3, totalVotes: 5, numEligible: 3,
       });
       conf022 = E.createConf({
         // This conf describes a situation where CN0 is eligible with 0 votes.
@@ -47,13 +47,13 @@ module.exports = function(E) {
         // and then withdraw (or approve withdrawal) most amounts.
         // CN0 falling below minstake does not affect the vote cap of 2 votes.
         balances:     [ [1e6], [10e6], [10e6] ],
-        nodeVotes:    [ 0,     2,      2      ],
-        numNodes: 3, totalVotes: 4, eligibleNodes: 3,
+        gcVotes:      [ 0,     2,      2      ],
+        numGCs: 3, totalVotes: 4, numEligible: 3,
       });
       conf011 = E.createConf({
         balances:     [ [1e6], [10e6], [10e6] ],
-        nodeVotes:    [ 0,     1,      1      ],
-        numNodes: 3, totalVotes: 2, eligibleNodes: 2,
+        gcVotes:      [ 0,     1,      1      ],
+        numGCs: 3, totalVotes: 2, numEligible: 2,
       });
     });
 
@@ -101,11 +101,11 @@ module.exports = function(E) {
         await expect(tx)
           .to.emit(st, "RefreshStake").withArgs(
             tid,                         // tid
-            NA01,                        // nodeId
+            700,                         // gcId
             cns.address,                 // staking
             toPeb(opts.balances[0][0]),  // stakingBalance
-            toPeb(opts.nodeBalances[0]), // nodeBalance
-            opts.nodeVotes[0],           // nodeVotes
+            toPeb(opts.gcBalances[0]),   // gcBalance
+            opts.gcVotes[0],             // gcVotes
             opts.totalVotes,             // totalVotes
           );
 
@@ -196,7 +196,7 @@ module.exports = function(E) {
         // Anyone can invoke refreshStake()
         // Balance change is recognized
         await expect(st.connect(E.other1).refreshStake(cns0.address))
-          .to.emit(st, "RefreshStake").withArgs(tid, NA01, cns0.address, toPeb(10e6), toPeb(10e6), 2, 4);
+          .to.emit(st, "RefreshStake").withArgs(tid, 700, cns0.address, toPeb(10e6), toPeb(10e6), 2, 4);
         await E.check_tracker(st, tid, conf211);
       });
       it("update just before trackEnd", async function() {
@@ -237,7 +237,7 @@ module.exports = function(E) {
         // Wait until tid1 expires
         await setBlock(te1);
         // Updating balance will trigger RefreshStake of tid2 and tid3.
-        let commonArgs = [NA01, cns0.address, toPeb(10e6), toPeb(10e6), 2, 4];
+        let commonArgs = [700, cns0.address, toPeb(10e6), toPeb(10e6), 2, 4];
         await expect(tx_stake(cns0, toPeb(5e6)))
           .to.emit(st, "RefreshStake").withArgs(tid2, ...commonArgs)
           .to.emit(st, "RefreshStake").withArgs(tid3, ...commonArgs);

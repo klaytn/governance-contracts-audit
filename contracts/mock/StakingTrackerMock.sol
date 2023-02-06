@@ -27,16 +27,9 @@ contract StakingTrackerMock is StakingTracker {
 
     function mockSetOwner(address newOwner) external { _transferOwnership(newOwner); }
 
-    function mockSetVoter(address nodeId, address newVoter) external {
-        updateVoter(nodeId, newVoter);
-        emit RefreshVoter(nodeId, address(0), newVoter);
-    }
-}
-
-contract StakingTrackerMockV1Balance is StakingTrackerMock {
-    // This version recognizes CnStakingV1 balances, and ignore unstaking amounts.
-    function getStakingBalance(address staking) public view virtual override returns(uint256) {
-        return staking.balance;
+    function mockSetVoter(uint256 gcId, address newVoter) external {
+        updateVoter(gcId, newVoter);
+        emit RefreshVoter(gcId, address(0), newVoter);
     }
 }
 
@@ -48,7 +41,7 @@ contract StakingTrackerMockReceiver {
     function refreshVoter(address) external { emit RefreshVoter(); }
     function CONTRACT_TYPE() external pure returns(string memory) { return "StakingTracker"; }
     function VERSION() external pure returns(uint256) { return 1; }
-    function voterToNodeId(address voter) external pure returns(address nodeId) { return address(0); }
+    function voterToGCId(address voter) external view returns(uint256) { return 0; }
     function getLiveTrackerIds() external view returns(uint256[] memory) { return new uint256[](0); }
 }
 

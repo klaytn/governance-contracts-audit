@@ -118,6 +118,30 @@ module.exports = function(E) {
       });
     }); // setStakingTracker
 
+    describe("setGCId", function() {
+      let cns;
+      beforeEach(async function() {
+        cns = await E.deploy();
+      });
+
+      it("success", async function() {
+        await E.must_setGCId(cns, E.cv, E.gcId);
+      });
+      it("reject after init", async function() {
+        await E.init(cns);
+        await E.revert_setGCId(cns, E.cv, E.gcId,
+          "Contract has been initialized.");
+      });
+      it("reject non-admin", async function() {
+        await E.revert_setGCId(cns, E.other1, E.gcId,
+          "Address is not admin.");
+      });
+      it("reject zero", async function() {
+        await E.revert_setGCId(cns, E.cv, 0,
+          "GC ID cannot be zero");
+      });
+    }); // setGCId
+
     describe("reviewInitialConditions", function() {
       let cns;
       beforeEach(async function() {
@@ -159,6 +183,7 @@ module.exports = function(E) {
       });
 
       it("success", async function() {
+        await E.must_setGCId(cns, E.cv, E.gcId);
         await E.must_reviewInitialConditions(cns, E.cv);
         await E.must_reviewInitialConditions(cns, E.admin1);
         await E.must_reviewInitialConditions(cns, E.admin2);
@@ -174,11 +199,17 @@ module.exports = function(E) {
         await E.revert_depositLockupStakingAndInit(cns, E.cv, E.initDepositAmount,
           "Contract has been initialized.");
       });
+      it("reject without gcId", async function() {
+        await E.revert_depositLockupStakingAndInit(cns, E.cv, E.initDepositAmount,
+          "GC ID cannot be zero");
+      });
       it("reject before review", async function() {
+        await E.must_setGCId(cns, E.cv, E.gcId);
         await E.revert_depositLockupStakingAndInit(cns, E.cv, E.initDepositAmount,
           "Reviewing is not finished.");
       });
       it("reject wrong amount", async function() {
+        await E.must_setGCId(cns, E.cv, E.gcId);
         await E.must_reviewInitialConditions(cns, E.cv);
         await E.must_reviewInitialConditions(cns, E.admin1);
         await E.must_reviewInitialConditions(cns, E.admin2);

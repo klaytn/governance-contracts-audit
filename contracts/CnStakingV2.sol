@@ -134,6 +134,7 @@ contract CnStakingV2 is ICnStakingV2 {
     }
 
     // External accounts
+    uint256 public override gcId; // used to group staking contracts
     address public override nodeId; // informational
     address public override rewardAddress; // informational
     address public override pendingRewardAddress; // used in updateRewardAddress in progress
@@ -250,6 +251,17 @@ contract CnStakingV2 is ICnStakingV2 {
         emit UpdateStakingTracker(_tracker);
     }
 
+    /// @dev Set the gcId
+    /// The gcId never changes once initialized.
+    /// Emits a UpdateCouncilId event.
+    function setGCId(uint256 _gcId) external override
+    beforeInit()
+    onlyAdmin(msg.sender) {
+        require(_gcId != 0, "GC ID cannot be zero");
+        gcId = _gcId;
+        emit UpdateGCId(_gcId);
+    }
+
     /// @dev Agree on the initial lockup conditions
     /// The contractValidator and every initial admins (cnAdminList) must agree
     /// for this contract to initialize.
@@ -276,6 +288,7 @@ contract CnStakingV2 is ICnStakingV2 {
     /// Emits a DepositLockupStakingAndInit event.
     function depositLockupStakingAndInit() external payable override
     beforeInit() {
+        require(gcId != 0, "GC ID cannot be zero");
         require(lockupConditions.allReviewed == true, "Reviewing is not finished.");
 
         uint256 requiredStakingAmount;
@@ -559,8 +572,8 @@ contract CnStakingV2 is ICnStakingV2 {
     afterInit()
     onlyAdmin(msg.sender) {
         if (stakingTracker != address(0) && _addr != address(0)) {
-            address oldNodeId = IStakingTracker(stakingTracker).voterToNodeId(_addr);
-            require(oldNodeId == address(0), "Voter address already taken");
+            address oldGCId = IStakingTracker(stakingTracker).voterToGCId(_addr);
+            require(oldGCId == address(0), "Voter address already taken");
         }
         uint256 id = submitRequest(Functions.UpdateVoterAddress, toBytes32(_addr), 0, 0);
         confirmRequest(id);
@@ -1026,6 +1039,6 @@ interface IStakingTracker {
     function refreshVoter(address voter) external;
     function CONTRACT_TYPE() external view returns(string memory);
     function VERSION() external view returns(uint256);
-    function voterToNodeId(address voter) external view returns(address nodeId);
+    function voterToGCId(address voter) external view returns(address nodeId);
     function getLiveTrackerIds() external view returns(uint256[] memory);
 }

@@ -43,13 +43,14 @@ class ScenarioTestEnv {
       value: toPeb(1) });
     return cns;
   }
-  async cnsDeployV2(nodeId, rewardAddr, stAddr) {
+  async cnsDeployV2(nodeId, rewardAddr, gcId, stAddr) {
     let t1 = (await nowTime()) + 10;
     let cns = await this.CnSV2.connect(this.deployer).deploy(
       this.deployer.address, nodeId, rewardAddr,
       [this.admin1.address], 1, [t1], [toPeb(1)]);
 
-    await cns.setStakingTracker(stAddr);
+    await cns.connect(this.deployer).setStakingTracker(stAddr);
+    await cns.connect(this.deployer).setGCId(gcId);
     await cns.connect(this.deployer).reviewInitialConditions();
     await cns.connect(this.admin1).reviewInitialConditions();
     await cns.connect(this.admin1).depositLockupStakingAndInit({

@@ -9,28 +9,30 @@ const NULL_ADDR = constants.ZERO_ADDRESS;
 // Representative Node IDs: NA(n,1)
 // Placeholder Node IDs: NA(n,2..8)
 // Reward Addrs: NA(n,9)
+// GC IDs: 700+n
 const NA = numericAddr;
 const [ NA01, NA11, NA21, NA31, NA41 ] = [ NA(0,1), NA(1,1), NA(2,1), NA(3,1), NA(4,1) ];
 const [ NA02, NA03, NA12, NA13, NA32 ] = [ NA(0,2), NA(0,3), NA(1,2), NA(1,3), NA(3,2) ];
 const [ NA09, NA19, NA29, NA39, NA49 ] = [ NA(0,9), NA(1,9), NA(2,9), NA(3,9), NA(4,9) ];
 
-function calc_votes(nodeBalance, eligibleNodes) {
-  var cap = _.max([1, eligibleNodes - 1]);
+function calc_votes(nodeBalance, numEligible) {
+  var cap = _.max([1, numEligible - 1]);
   return _.min([_.floor(nodeBalance / 5e6), cap]);
 }
-function calc_eligibleNodes(nodeBalances) {
+function calc_numEligible(nodeBalances) {
   return _.filter(nodeBalances, (b) => b >= 5e6).length;
 }
 function calc_allVotes(nodeBalances) {
-  eligibleNodes = calc_eligibleNodes(nodeBalances);
-  return _.map(nodeBalances, (b) => calc_votes(b, eligibleNodes));
+  numEligible = calc_numEligible(nodeBalances);
+  return _.map(nodeBalances, (b) => calc_votes(b, numEligible));
 }
 
 class StakingContract {
-  constructor(envs, nodeId, rewardAddr, balance) {
+  constructor(envs, nodeId, rewardAddr, gcId, balance) {
     this.envs = envs;
     this.nodeId = nodeId;
     this.rewardAddr = rewardAddr;
+    this.gcId = gcId;
     this.balance = balance;
     this.address = null;
   }
@@ -47,6 +49,9 @@ class StakingContract {
       deployer.address, this.nodeId, this.rewardAddr,
       [admin.address], 1,
       [t1], [toPeb(1)]);
+    if (parseInt(await cns.VERSION()) >= 2) {
+      await cns.connect(deployer).setGCId(this.gcId);
+    }
     await cns.connect(deployer).reviewInitialConditions();
     await cns.connect(admin).reviewInitialConditions();
     await cns.connect(deployer).depositLockupStakingAndInit({ value: toPeb(1) });
@@ -79,14 +84,16 @@ class StakingConf {
     // the staking balances of a CN.
     //
     // For missing fields, calculate from opts.balances.
-    opts               = opts               || {};
-    opts.balances      = opts.balances      || [ [5e6] ];
-    opts.numNodes      = opts.numNodes      || opts.balances.length;
-    opts.nodeIds       = opts.nodeIds       || _.map(_.range(opts.numNodes), (n) => NA(n,1));
-    opts.nodeBalances  = opts.nodeBalances  || _.map(opts.balances, _.sum);
-    opts.eligibleNodes = opts.eligibleNodes || calc_eligibleNodes(opts.nodeBalances);
-    opts.nodeVotes     = opts.nodeVotes     || calc_allVotes(opts.nodeBalances);
-    opts.totalVotes    = opts.totalVotes    || _.sum(opts.nodeVotes);
+    opts = opts || {};
+
+    opts.balances    =  opts.balances    || [ [5e6] ];
+    opts.numGCs      =  opts.numGCs      || opts.balances.length;
+    opts.gcIds       =  opts.gcIds       || _.map(_.range(opts.numGCs), (n) => 700+n);
+    opts.gcBalances  =  opts.gcBalances  || _.map(opts.balances, _.sum);
+    opts.numEligible =  opts.numEligible || calc_numEligible(opts.gcBalances);
+    opts.gcVotes     =  opts.gcVotes     || calc_allVotes(opts.gcBalances);
+    opts.totalVotes  =  opts.totalVotes  || _.sum(opts.gcVotes);
+
     this.opts = opts;
     this.envs = envs;
     this._cnsAddrs = null;
@@ -124,10 +131,11 @@ class StakingConf {
     let balances = this.opts.balances;
     for (var i = 0; i < balances.length; i++) {
       for (var j = 0; j < balances[i].length; j++) {
+        let gcId       = 700+i;
         let nodeId     = NA(i, j+1);
         let rewardAddr = NA(i, 9);
         let balance    = toPeb(balances[i][j]);
-        let contract   = new StakingContract(this.envs, nodeId, rewardAddr, balance);
+        let contract   = new StakingContract(this.envs, nodeId, rewardAddr, gcId, balance);
 
         nodeIds.push(nodeId);
         rewardAddrs.push(rewardAddr);
@@ -185,7 +193,7 @@ function buildUniformCnOpts(numCNs) {
     nodeVotes: repeat(N, 1),
     numNodes: N,
     totalVotes: N,
-    eligibleNodes: N,
+    numEligible: N,
   };
   return conf;
 }
@@ -218,7 +226,7 @@ function build50x2cnOpts() {
   );
   conf.numNodes = 50;
   conf.totalVotes = _.sum(conf.nodeVotes);
-  conf.eligibleNodes = 40;
+  conf.numEligible = 40;
   return conf;
 }
 function repeat(count, item) {

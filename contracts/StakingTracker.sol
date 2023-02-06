@@ -28,19 +28,19 @@ contract StakingTracker is IStakingTracker, Ownable {
         uint256 trackStart;
         uint256 trackEnd;
 
-        // List of eligible nodes and their staking addresses.
+        // List of eligible GCs and their staking addresses.
         // Determined at crateTracker() and does not change.
-        address[] nodeIds;
-        mapping(address => address) rewardToNodeId;
-        mapping(address => address) stakingToNodeId;
+        uint256[] gcIds;
+        mapping(uint256 => bool) gcExists;
+        mapping(address => uint256) stakingToGCId;
 
         // Balances and voting powers.
         // First collected at crateTracker() and updated at refreshStake() until trackEnd.
         mapping(address => uint256) stakingBalances; // staking address balances
-        mapping(address => uint256) nodeBalances; // consolidated node balances
-        mapping(address => uint256) nodeVotes; // node voting powers
+        mapping(uint256 => uint256) gcBalances; // consolidated GC balances
+        mapping(uint256 => uint256) gcVotes; // GC voting powers
         uint256 totalVotes;
-        uint256 eligibleNodes;
+        uint256 numEligible;
     }
 
     // Store tracker objects
@@ -48,9 +48,9 @@ contract StakingTracker is IStakingTracker, Ownable {
     uint256[] private allTrackerIds;  // append-only list of trackerIds
     uint256[] private liveTrackerIds; // trackerIds with block.number < trackEnd. Not in order.
 
-    // 1-to-1 mapping between nodeId and voter account
-    mapping(address => address) public override nodeIdToVoter;
-    mapping(address => address) public override voterToNodeId;
+    // 1-to-1 mapping between gcId and voter account
+    mapping(uint256 => address) public override gcIdToVoter;
+    mapping(address => uint256) public override voterToGCId;
 
     // Constants
     function CONTRACT_TYPE()
@@ -80,7 +80,7 @@ contract StakingTracker is IStakingTracker, Ownable {
         populateFromAddressBook(trackerId);
         calcAllVotes(trackerId);
 
-        emit CreateTracker(trackerId, trackStart, trackEnd, tracker.nodeIds);
+        emit CreateTracker(trackerId, trackStart, trackEnd, tracker.gcIds);
         return trackerId;
     }
 
@@ -88,59 +88,55 @@ contract StakingTracker is IStakingTracker, Ownable {
     function populateFromAddressBook(uint256 trackerId) private {
         Tracker storage tracker = trackers[trackerId];
 
-        (address[] memory nodeIds,
-         address[] memory stakingContracts,
-         address[] memory rewardAddrs) = getAddressBookLists();
+        (,address[] memory stakingContracts,) = getAddressBookLists();
 
-        // Consolidate staking contracts (grouped by reward address)
-        for (uint256 i = 0; i < nodeIds.length; i++) {
-            address n = nodeIds[i];
-            address s = stakingContracts[i];
-            address r = rewardAddrs[i];
+        for (uint256 i = 0; i < stakingContracts.length; i++) {
+            address staking = stakingContracts[i];
 
-            if (isCnStakingV2(s) && ICnStakingV2(s).stakingTracker() != address(this)) {
+            (bool isV2, uint256 balance, uint256 gcId, address stakingTracker, ) = readCnStaking(staking);
+            if (!isV2) {
+                // Ignore V1 contract
+                continue;
+            }
+            if (stakingTracker != address(this)) {
+                // Ignore CnStaking that does not point to this StakingTracker.
+                // Hinders an attack where the CnStaking evades real-time voting
+                // power calculation via staking withdrawal.
                 continue;
             }
 
-            uint256 balance = getStakingBalance(s);
-
-            if (tracker.rewardToNodeId[r] == address(0)) { // fresh rewardAddr
-                tracker.nodeIds.push(n);
-                tracker.rewardToNodeId[r] = n;
-
-                tracker.stakingToNodeId[s] = n;
-                tracker.stakingBalances[s] = balance;
-                tracker.nodeBalances[n] = balance;
-            } else { // previously appeared rewardAddr
-                n = tracker.rewardToNodeId[r]; // use representative nodeId
-
-                tracker.stakingToNodeId[s] = n;
-                tracker.stakingBalances[s] = balance;
-                tracker.nodeBalances[n] += balance;
+            if (!tracker.gcExists[gcId]) {
+                tracker.gcExists[gcId] = true;
+                tracker.gcIds.push(gcId);
             }
+
+            tracker.stakingToGCId[staking] = gcId;
+            tracker.stakingBalances[staking] = balance;
+            tracker.gcBalances[gcId] += balance;
         }
     }
 
     /// @dev Populate a tracker with voting powers
     function calcAllVotes(uint256 trackerId) private {
         Tracker storage tracker = trackers[trackerId];
-        uint256 eligibleNodes = 0;
+        uint256 numEligible = 0;
         uint256 totalVotes = 0;
 
-        for (uint256 i = 0; i < tracker.nodeIds.length; i++) {
-            address nodeId = tracker.nodeIds[i];
-            if (tracker.nodeBalances[nodeId] >= MIN_STAKE()) {
-                eligibleNodes ++;
+        for (uint256 i = 0; i < tracker.gcIds.length; i++) {
+            uint256 gcId = tracker.gcIds[i];
+            if (tracker.gcBalances[gcId] >= MIN_STAKE()) {
+                numEligible ++;
             }
         }
-        for (uint256 i = 0; i < tracker.nodeIds.length; i++) {
-            address nodeId = tracker.nodeIds[i];
-            uint256 votes = calcVotes(eligibleNodes, tracker.nodeBalances[nodeId]);
-            tracker.nodeVotes[nodeId] = votes;
+        for (uint256 i = 0; i < tracker.gcIds.length; i++) {
+            uint256 gcId = tracker.gcIds[i];
+            uint256 balance = tracker.gcBalances[gcId];
+            uint256 votes = calcVotes(numEligible, balance);
+            tracker.gcVotes[gcId] = votes;
             totalVotes += votes;
         }
 
-        tracker.eligibleNodes = eligibleNodes;
+        tracker.numEligible = numEligible;
         tracker.totalVotes = totalVotes; // only write final result to save gas
     }
 
@@ -166,64 +162,65 @@ contract StakingTracker is IStakingTracker, Ownable {
         }
     }
 
-    /// @dev Re-evalute node balance and subsequently voting power
+    /// @dev Re-evalute balances and subsequently voting power
     function updateTracker(uint256 trackerId, address staking) private {
         Tracker storage tracker = trackers[trackerId];
 
-        // Resolve node
-        address nodeId = tracker.stakingToNodeId[staking];
-        if (nodeId == address(0)) {
+        // Resolve GC
+        uint256 gcId = tracker.stakingToGCId[staking];
+        if (gcId == 0) {
             return;
         }
 
         // Update balance
         uint256 oldBalance = tracker.stakingBalances[staking];
-        uint256 newBalance = getStakingBalance(staking);
+        (, uint256 newBalance, , , ) = readCnStaking(staking);
         tracker.stakingBalances[staking] = newBalance;
-        tracker.nodeBalances[nodeId] -= oldBalance;
-        tracker.nodeBalances[nodeId] += newBalance;
-        uint256 nodeBalance = tracker.nodeBalances[nodeId];
+        tracker.gcBalances[gcId] -= oldBalance;
+        tracker.gcBalances[gcId] += newBalance;
+        uint256 gcBalance = tracker.gcBalances[gcId];
 
         // Update vote cap if necessary
         bool wasEligible = oldBalance >= MIN_STAKE();
         bool isEligible = newBalance >= MIN_STAKE();
         if (wasEligible != isEligible) {
             if (wasEligible) { // eligible -> not eligible
-                tracker.eligibleNodes -= 1;
+                tracker.numEligible -= 1;
             } else { // not eligible -> eligible
-                tracker.eligibleNodes += 1;
+                tracker.numEligible += 1;
             }
             recalcAllVotes(trackerId);
         }
 
         // Update votes
-        uint256 oldVotes = tracker.nodeVotes[nodeId];
-        uint256 newVotes = calcVotes(tracker.eligibleNodes, nodeBalance);
-        tracker.nodeVotes[nodeId] = newVotes;
+        uint256 oldVotes = tracker.gcVotes[gcId];
+        uint256 newVotes = calcVotes(tracker.numEligible, gcBalance);
+        tracker.gcVotes[gcId] = newVotes;
         tracker.totalVotes -= oldVotes;
         tracker.totalVotes += newVotes;
 
-        emit RefreshStake(trackerId, nodeId, staking,
-                          newBalance, nodeBalance, newVotes, tracker.totalVotes);
+        emit RefreshStake(trackerId, gcId, staking,
+                          newBalance, gcBalance, newVotes, tracker.totalVotes);
     }
 
-    /// @dev Recalculate votes of all nodes
+    /// @dev Recalculate votes with new numEligible
     function recalcAllVotes(uint256 trackerId) internal {
         Tracker storage tracker = trackers[trackerId];
 
         uint256 totalVotes = tracker.totalVotes;
-        for (uint256 i = 0; i < tracker.nodeIds.length; i++) {
-            address nodeId = tracker.nodeIds[i];
-            uint256 nodeBalance = tracker.nodeBalances[nodeId];
-            uint256 oldVotes = tracker.nodeVotes[nodeId];
-            uint256 newVotes = calcVotes(tracker.eligibleNodes, nodeBalance);
+        for (uint256 i = 0; i < tracker.gcIds.length; i++) {
+            uint256 gcId = tracker.gcIds[i];
+            uint256 gcBalance = tracker.gcBalances[gcId];
+            uint256 oldVotes = tracker.gcVotes[gcId];
+            uint256 newVotes = calcVotes(tracker.numEligible, gcBalance);
 
             if (oldVotes != newVotes) {
-                tracker.nodeVotes[nodeId] = newVotes;
+                tracker.gcVotes[gcId] = newVotes;
                 totalVotes -= oldVotes;
                 totalVotes += newVotes;
             }
         }
+
         tracker.totalVotes = totalVotes; // only write final result to save gas
     }
 
@@ -231,59 +228,45 @@ contract StakingTracker is IStakingTracker, Ownable {
     /// Anyone can call this function, but `staking` must be a staking contract
     /// registered to the current AddressBook.
     ///
-    /// Updates the voter account of the node of the `staking` with respect to
+    /// Updates the voter account of the GC of the `staking` with respect to
     /// the corrent AddressBook.
     ///
-    /// If the node already had a voter account, the account will be unregistered.
-    /// If the new voter account is already appointed for another node,
+    /// If the GC already had a voter account, the account will be unregistered.
+    /// If the new voter account is already appointed for another GC,
     /// this function reverts.
     function refreshVoter(address staking) external override {
-        address nodeId = resolveStakingFromAddressBook(staking);
-        require(nodeId != address(0), "Not a staking contract");
-        require(isCnStakingV2(staking), "Invalid CnStaking contract");
+        (, address[] memory stakingContracts, ) = getAddressBookLists();
+        bool stakingInAddressBook = false;
+        for (uint256 i = 0; i < stakingContracts.length; i++) {
+            if (stakingContracts[i] == staking) {
+                stakingInAddressBook = true;
+                break;
+            }
+        }
+        require(stakingInAddressBook, "Not a staking contract");
 
-        address newVoter = ICnStakingV2(staking).voterAddress();
-        updateVoter(nodeId, newVoter);
+        (bool isV2, , uint256 gcId, , address newVoter) = readCnStaking(staking);
+        require(isV2, "Invalid CnStaking contract");
 
-        emit RefreshVoter(nodeId, staking, newVoter);
+        updateVoter(gcId, newVoter);
+
+        emit RefreshVoter(gcId, staking, newVoter);
     }
 
-    function updateVoter(address nodeId, address newVoter) internal {
+    function updateVoter(uint256 gcId, address newVoter) internal {
         // Unlink existing two-way mapping
-        address oldVoter = nodeIdToVoter[nodeId];
+        address oldVoter = gcIdToVoter[gcId];
         if (oldVoter != address(0)) {
-            voterToNodeId[oldVoter] = address(0);
-            nodeIdToVoter[nodeId] = address(0);
+            voterToGCId[oldVoter] = 0;
+            gcIdToVoter[gcId] = address(0);
         }
 
         // Create new mapping
         if (newVoter != address(0)) {
-            require(voterToNodeId[newVoter] == address(0), "Voter address already taken");
-            voterToNodeId[newVoter] = nodeId;
-            nodeIdToVoter[nodeId] = newVoter;
+            require(voterToGCId[newVoter] == 0, "Voter address already taken");
+            voterToGCId[newVoter] = gcId;
+            gcIdToVoter[gcId] = newVoter;
         }
-    }
-
-    /// @dev Resolve nodeId of given `staking` contract with respect to the current AddressBook
-    /// Returns null if given `staking` is not a registered staking contract.
-    function resolveStakingFromAddressBook(address staking) private view returns(address) {
-        (address[] memory nodeIds,
-         address[] memory stakingContracts,
-         address[] memory rewardAddrs) = getAddressBookLists();
-
-        address rewardAddr;
-        for (uint256 i = 0; i < nodeIds.length; i++) {
-            if (stakingContracts[i] == staking) {
-                rewardAddr = rewardAddrs[i];
-                break;
-            }
-        }
-        for (uint256 i = 0; i < nodeIds.length; i++) {
-            if (rewardAddrs[i] == rewardAddr) {
-                return nodeIds[i];
-            }
-        }
-        return address(0);
     }
 
     // Helper fucntions
@@ -327,24 +310,31 @@ contract StakingTracker is IStakingTracker, Ownable {
         return true;
     }
 
-    /// @dev Effective balance of a CnStakingV2 contract.
-    /// The effective balance is the contract account balance except unstaking amount.
-    function getStakingBalance(address staking) public view virtual returns(uint256) {
+    /// @dev Read various fields from a CnStaking contract
+    function readCnStaking(address staking) public view virtual returns(
+        bool isV2,
+        uint256 effectiveBalance,
+        uint256 gcId,
+        address stakingTracker,
+        address voterAddress)
+    {
         if (isCnStakingV2(staking)) {
-            uint256 accountBalance = staking.balance;
-            uint256 unstaking = ICnStakingV2(staking).unstaking();
-            return (accountBalance - unstaking);
+            return (true,
+                    staking.balance - ICnStakingV2(staking).unstaking(),
+                    ICnStakingV2(staking).gcId(),
+                    ICnStakingV2(staking).stakingTracker(),
+                    ICnStakingV2(staking).voterAddress());
         }
-        return 0;
+        return (false, 0, 0, address(0), address(0));
     }
 
     /// @dev Calculate voting power from staking amounts.
     /// One integer vote is granted for each MIN_STAKE() balance. But the number of votes
-    /// is at most ([number of eligible nodes] - 1).
-    function calcVotes(uint256 eligibleNodes, uint256 balance) private view returns(uint256) {
+    /// is at most ([number of eligible GCs] - 1).
+    function calcVotes(uint256 numEligible, uint256 balance) private view returns(uint256) {
         uint256 voteCap = 1;
-        if (eligibleNodes > 1) {
-            voteCap = eligibleNodes - 1;
+        if (numEligible > 1) {
+            voteCap = numEligible - 1;
         }
 
         uint256 votes = balance / MIN_STAKE();
@@ -375,51 +365,50 @@ contract StakingTracker is IStakingTracker, Ownable {
     function getTrackerSummary(uint256 trackerId) external view override returns(
         uint256 trackStart,
         uint256 trackEnd,
-        uint256 numNodes,
+        uint256 numGCs,
         uint256 totalVotes,
-        uint256 eligibleNodes)
+        uint256 numEligible)
     {
         Tracker storage tracker = trackers[trackerId];
         return (tracker.trackStart,
                 tracker.trackEnd,
-                tracker.nodeIds.length,
+                tracker.gcIds.length,
                 tracker.totalVotes,
-                tracker.eligibleNodes);
+                tracker.numEligible);
     }
 
-    function getTrackedNode(uint256 trackerId, address nodeId) external view override returns(
-        uint256 nodeBalance,
-        uint256 nodeVotes)
+    function getTrackedGC(uint256 trackerId, uint256 gcId) external view override returns(
+        uint256 gcBalance,
+        uint256 gcVotes)
     {
         Tracker storage tracker = trackers[trackerId];
-        return (tracker.nodeBalances[nodeId],
-                tracker.nodeVotes[nodeId]);
+        return (tracker.gcBalances[gcId],
+                tracker.gcVotes[gcId]);
     }
 
-    function getAllTrackedNodes(uint256 trackerId) external view override returns(
-        address[] memory nodeIds,
-        uint256[] memory nodeBalances,
-        uint256[] memory nodeVotes)
+    function getAllTrackedGCs(uint256 trackerId) external view override returns(
+        uint256[] memory gcIds,
+        uint256[] memory gcBalances,
+        uint256[] memory gcVotes)
     {
         Tracker storage tracker = trackers[trackerId];
-        uint256 numNodes = tracker.nodeIds.length;
-        nodeIds = tracker.nodeIds;
+        uint256 numGCs = tracker.gcIds.length;
+        gcIds = tracker.gcIds;
 
-        nodeBalances = new uint256[](numNodes);
-        nodeVotes = new uint256[](numNodes);
-        for (uint256 i = 0; i < numNodes; i++) {
-            address nodeId = tracker.nodeIds[i];
-            nodeBalances[i] = tracker.nodeBalances[nodeId];
-            nodeVotes[i] = tracker.nodeVotes[nodeId];
+        gcBalances = new uint256[](numGCs);
+        gcVotes = new uint256[](numGCs);
+        for (uint256 i = 0; i < numGCs; i++) {
+            uint256 gcId = tracker.gcIds[i];
+            gcBalances[i] = tracker.gcBalances[gcId];
+            gcVotes[i] = tracker.gcVotes[gcId];
         }
-        return (nodeIds, nodeBalances, nodeVotes);
     }
 
-    function stakingToNodeId(uint256 trackerId, address staking)
-        external view override returns(address)
+    function stakingToGCId(uint256 trackerId, address staking)
+        external view override returns(uint256)
     {
         Tracker storage tracker = trackers[trackerId];
-        return tracker.stakingToNodeId[staking];
+        return tracker.stakingToGCId[staking];
     }
 }
 
@@ -429,7 +418,8 @@ interface IAddressBook {
 }
 
 interface ICnStakingV2 {
-    function voterAddress() external view returns(address);
-    function unstaking() external view returns(uint256);
     function stakingTracker() external view returns(address);
+    function voterAddress() external view returns(address);
+    function gcId() external view returns(uint256);
+    function unstaking() external view returns(uint256);
 }

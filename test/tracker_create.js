@@ -93,30 +93,30 @@ module.exports = function(E) {
       await check_create(E.conf100cn);
     });
 
-    it("stakingToNodeId", async function() {
+    it("stakingToGCId", async function() {
       let { st, tid } = await check_create(E.conf5cn);
 
       // See StakingTrackerTestEnv._createEnv() for definition of conf5cn
       let cnsAddrs = E.conf5cn.cnsAddrs;
       let answers = [
-        [cnsAddrs[0][0], NA01],
+        [cnsAddrs[0][0], 700],
 
-        [cnsAddrs[1][0], NA11],
-        [cnsAddrs[1][1], NA11],
+        [cnsAddrs[1][0], 701],
+        [cnsAddrs[1][1], 701],
 
-        [cnsAddrs[2][0], NA21],
-        [cnsAddrs[2][1], NA21],
-        [cnsAddrs[2][2], NA21],
+        [cnsAddrs[2][0], 702],
+        [cnsAddrs[2][1], 702],
+        [cnsAddrs[2][2], 702],
 
-        [cnsAddrs[3][0], NA31],
-        [cnsAddrs[3][1], NA31],
+        [cnsAddrs[3][0], 703],
+        [cnsAddrs[3][1], 703],
 
-        [cnsAddrs[4][0], NA41],
+        [cnsAddrs[4][0], 704],
       ];
 
       for (var answer of answers) {
-        let [staking, nodeId] = answer;
-        expect(await st.stakingToNodeId(tid, staking)).to.equal(nodeId);
+        let [staking, gcId] = answer;
+        expect(await st.stakingToGCId(tid, staking)).to.equal(gcId);
       }
     });
 
@@ -152,7 +152,7 @@ module.exports = function(E) {
     }
 
     it("ignore non-CnStaking", async function() {
-      let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, toPeb(5e6));
+      let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, 700, toPeb(5e6));
 
       let Invalid = await ethers.getContractFactory("WelcomingRecipient");
       let invalid = await Invalid.deploy();
@@ -161,14 +161,14 @@ module.exports = function(E) {
       await check_cns_invalid(cnsv2, invalid);
     });
     it("ignore CnStakingV1", async function() {
-      let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, toPeb(5e6));
-      let cnsv1 = await E.createCnStaking(E.CnStakingV1, NA02, NA09, toPeb(7e6));
+      let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, 700, toPeb(5e6));
+      let cnsv1 = await E.createCnStaking(E.CnStakingV1, NA02, NA09, 700, toPeb(7e6));
       await check_cns_invalid(cnsv2, cnsv1);
     });
     it("ignore CnStakingV2 with wrong tracker", async function() {
-      let cnsOk = await E.createCnStaking(E.CnStakingV2, NA01, NA09, toPeb(5e6));
+      let cnsOk = await E.createCnStaking(E.CnStakingV2, NA01, NA09, 700, toPeb(5e6));
       // cnsBad.stakingTracker is NULL
-      let cnsBad = await E.createCnStaking(E.CnStakingV2, NA02, NA09, toPeb(7e6));
+      let cnsBad = await E.createCnStaking(E.CnStakingV2, NA02, NA09, 700, toPeb(7e6));
       await check_cns_invalid(cnsOk, cnsBad);
     });
   }); // createTracker
@@ -185,11 +185,11 @@ module.exports = function(E) {
 
     // common cases
     it("accept v2", async function() {
-      let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, toPeb(5e6));
+      let cnsv2 = await E.createCnStaking(E.CnStakingV2, NA01, NA09, 1, toPeb(5e6));
       await check_isv2(cnsv2.address, true);
     });
     it("reject CnStakingV1", async function() {
-      let cnsv1 = await E.createCnStaking(E.CnStakingV1, NA02, NA09, toPeb(7e6));
+      let cnsv1 = await E.createCnStaking(E.CnStakingV1, NA02, NA09, 1, toPeb(7e6));
       await check_isv2(cnsv1.address, false);
     });
 

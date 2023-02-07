@@ -94,11 +94,11 @@ contract Voting is IVoting {
 
     uint256 public constant DAY = 86400;
     /// @dev Grace period to queue() passed proposals in block numbers
-    uint256 public override queueTimeout = 365*DAY;
+    uint256 public override queueTimeout = 14*DAY;
     /// @dev A minimum delay before a queued transaction can be executed in block numbers
     uint256 public override execDelay = 2*DAY;
     /// @dev Grace period to execute() queued proposals since `execDelay` in block numbers
-    uint256 public override execTimeout = 365*DAY;
+    uint256 public override execTimeout = 14*DAY;
 
     constructor(address _tracker, address _secretary) {
         if (_tracker != address(0)) {

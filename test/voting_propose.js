@@ -37,9 +37,9 @@ module.exports = function(E) {
         // contribute to the code coverage of the original contract
         let Voting = await ethers.getContractFactory("Voting");
         let vo = await Voting.deploy(E.conf1cn.stAddr, E.secr1.address);
-        expect(await vo.queueTimeout()).to.equal(86400*365);
+        expect(await vo.queueTimeout()).to.equal(86400*14);
         expect(await vo.execDelay()).to.equal(172800);
-        expect(await vo.execTimeout()).to.equal(86400*365);
+        expect(await vo.execTimeout()).to.equal(86400*14);
       });
     }); // constants
   }); // init

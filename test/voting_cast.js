@@ -97,10 +97,10 @@ module.exports = function(E) {
       }
 
       it("quorumCount and quorumPower", async function() {
-        // pass by quorumCount
-        await check_voting_result([ [E.voter3,'Yes'], [E.voter4,'Yes'] ],     [2,0,0], true);
-        await check_voting_result([ [E.voter3,'Yes'], [E.voter4,'Abstain'] ], [1,0,1], true);
-        // pass by quorumPower
+        // votes = [3,2,1,1,0]
+        // pass by quorumCount (2)
+        await check_voting_result([ [E.voter3,'Yes'], [E.voter4,'Yes'] ], [2,0,0], true);
+        // pass by quorumPower (3)
         await check_voting_result([ [E.voter1,'Yes'] ], [3,0,0], true);
         // not quorumCount nor quorumPower
         await check_voting_result([],                   [0,0,0], false);
@@ -111,16 +111,23 @@ module.exports = function(E) {
         await check_voting_result([ [E.voter1,'Yes'] ],     [3,0,0], true);
         await check_voting_result([ [E.voter1,'No'] ],      [0,3,0], false);
         await check_voting_result([ [E.voter1,'Abstain'] ], [0,0,3], false);
-        // two votes
+
+        // two votes with the same choice
         await check_voting_result([ [E.voter2,'Yes'], [E.voter3,'Yes'] ],         [3,0,0], true);
         await check_voting_result([ [E.voter2,'No'], [E.voter3,'No'] ],           [0,3,0], false);
         await check_voting_result([ [E.voter2,'Abstain'], [E.voter3,'Abstain'] ], [0,0,3], false);
-        // Yes < No  => Fail
+
+        // various approval rate conditions
+        // Yes < No + Abstain => Fail
         await check_voting_result([ [E.voter3,'Yes'], [E.voter2,'No'] ], [1,2,0], false);
-        // Yes = No  => Fail
+        await check_voting_result([ [E.voter3,'Yes'], [E.voter2,'Abstain'] ], [1,0,2], false);
+        // Yes = No + Abstain => Fail
         await check_voting_result([ [E.voter3,'Yes'], [E.voter4,'No'] ], [1,1,0], false);
-        // No < Yes < No+Abstain  => Pass
-        await check_voting_result([ [E.voter2,'Yes'], [E.voter3,'No'], [E.voter1,'Abstain'] ], [2,1,3], true);
+        await check_voting_result([ [E.voter2,'Yes'], [E.voter3,'No'], [E.voter4,'Abstain'] ], [2,1,1], false);
+        // No < Yes < No+Abstain  => Fail
+        await check_voting_result([ [E.voter2,'Yes'], [E.voter3,'No'], [E.voter1,'Abstain'] ], [2,1,3], false);
+        // Yes > No + Abstain => Pass
+        await check_voting_result([ [E.voter1,'Yes'], [E.voter3,'No'], [E.voter4,'Abstain'] ], [3,1,1], true);
       });
     }); // checkQuorum
 

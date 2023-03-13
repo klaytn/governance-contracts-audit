@@ -475,7 +475,7 @@ contract Voting is IVoting {
 
         (uint256 quorumCount, uint256 quorumPower) = getQuorum(proposalId);
         uint256 totalVotes = p.totalYes + p.totalNo + p.totalAbstain;
-        uint256 quorumYes = p.totalNo + 1; // strictly more than No votes
+        uint256 quorumYes = p.totalNo + p.totalAbstain + 1; // more than half of all votes
 
         bool countPass = (p.voters.length >= quorumCount);
         bool powerPass = (totalVotes      >= quorumPower);

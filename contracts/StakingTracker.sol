@@ -44,9 +44,9 @@ contract StakingTracker is IStakingTracker, Ownable {
     }
 
     // Store tracker objects
-    mapping(uint256 => Tracker) private trackers; // indexed by trackerId
-    uint256[] private allTrackerIds;  // append-only list of trackerIds
-    uint256[] private liveTrackerIds; // trackerIds with block.number < trackEnd. Not in order.
+    mapping(uint256 => Tracker) internal trackers; // indexed by trackerId
+    uint256[] internal allTrackerIds;  // append-only list of trackerIds
+    uint256[] internal liveTrackerIds; // trackerIds with block.number < trackEnd. Not in order.
 
     // 1-to-1 mapping between gcId and voter account
     mapping(uint256 => address) public override gcIdToVoter;
@@ -67,7 +67,7 @@ contract StakingTracker is IStakingTracker, Ownable {
     /// @dev Creates a new Tracker and populate initial values from AddressBook
     /// Only allowed to the contract owner.
     function createTracker(uint256 trackStart, uint256 trackEnd)
-        external override onlyOwner returns(uint256 trackerId)
+        public virtual override onlyOwner returns(uint256 trackerId)
     {
         trackerId = getLastTrackerId() + 1;
         allTrackerIds.push(trackerId);
@@ -85,7 +85,7 @@ contract StakingTracker is IStakingTracker, Ownable {
     }
 
     /// @dev Populate a tracker with staking balances from AddressBook
-    function populateFromAddressBook(uint256 trackerId) private {
+    function populateFromAddressBook(uint256 trackerId) internal {
         Tracker storage tracker = trackers[trackerId];
 
         (,address[] memory stakingContracts,) = getAddressBookLists();
@@ -117,7 +117,7 @@ contract StakingTracker is IStakingTracker, Ownable {
     }
 
     /// @dev Populate a tracker with voting powers
-    function calcAllVotes(uint256 trackerId) private {
+    function calcAllVotes(uint256 trackerId) internal {
         Tracker storage tracker = trackers[trackerId];
         uint256 numEligible = 0;
         uint256 totalVotes = 0;
@@ -143,7 +143,7 @@ contract StakingTracker is IStakingTracker, Ownable {
     /// @dev Re-evaluate Tracker contents related to the staking contract
     /// Anyone can call this function, but `staking` must be a staking contract
     /// registered in tracker.
-    function refreshStake(address staking) external override {
+    function refreshStake(address staking) external virtual override {
         uint256 i = 0;
         while (i < liveTrackerIds.length) {
             uint256 currId = liveTrackerIds[i];
@@ -234,7 +234,7 @@ contract StakingTracker is IStakingTracker, Ownable {
     /// If the GC already had a voter account, the account will be unregistered.
     /// If the new voter account is already appointed for another GC,
     /// this function reverts.
-    function refreshVoter(address staking) external override {
+    function refreshVoter(address staking) external virtual override {
         (, address[] memory stakingContracts, ) = getAddressBookLists();
         bool stakingInAddressBook = false;
         for (uint256 i = 0; i < stakingContracts.length; i++) {
@@ -272,7 +272,7 @@ contract StakingTracker is IStakingTracker, Ownable {
     // Helper fucntions
 
     /// @dev Query the 3-tuples (node, staking, reward) from AddressBook
-    function getAddressBookLists() private view returns(
+    function getAddressBookLists() internal view returns(
         address[] memory nodeIds,
         address[] memory stakingContracts,
         address[] memory rewardAddrs)
@@ -362,7 +362,7 @@ contract StakingTracker is IStakingTracker, Ownable {
         return liveTrackerIds;
     }
 
-    function getTrackerSummary(uint256 trackerId) external view override returns(
+    function getTrackerSummary(uint256 trackerId) public view override returns(
         uint256 trackStart,
         uint256 trackEnd,
         uint256 numGCs,
@@ -386,7 +386,7 @@ contract StakingTracker is IStakingTracker, Ownable {
                 tracker.gcVotes[gcId]);
     }
 
-    function getAllTrackedGCs(uint256 trackerId) external view override returns(
+    function getAllTrackedGCs(uint256 trackerId) public view override returns(
         uint256[] memory gcIds,
         uint256[] memory gcBalances,
         uint256[] memory gcVotes)
@@ -418,6 +418,8 @@ interface IAddressBook {
 }
 
 interface ICnStakingV2 {
+    function VERSION() external view returns(uint256);
+    function rewardAddress() external view returns(address);
     function stakingTracker() external view returns(address);
     function voterAddress() external view returns(address);
     function gcId() external view returns(uint256);

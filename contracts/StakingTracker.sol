@@ -176,13 +176,31 @@ contract StakingTracker is IStakingTracker, Ownable {
         uint256 oldBalance = tracker.stakingBalances[staking];
         (, uint256 newBalance, , , ) = readCnStaking(staking);
         tracker.stakingBalances[staking] = newBalance;
+
+        uint256 oldGcBalance = tracker.gcBalances[gcId];
         tracker.gcBalances[gcId] -= oldBalance;
         tracker.gcBalances[gcId] += newBalance;
-        uint256 gcBalance = tracker.gcBalances[gcId];
+        uint256 newGcBalance = tracker.gcBalances[gcId];
 
         // Update vote cap if necessary
-        bool wasEligible = oldBalance >= MIN_STAKE();
-        bool isEligible = newBalance >= MIN_STAKE();
+        recalcAllVotesIfNeeded(trackerId, oldGcBalance, newGcBalance);
+
+        // Update votes
+        uint256 oldVotes = tracker.gcVotes[gcId];
+        uint256 newVotes = calcVotes(tracker.numEligible, newGcBalance);
+        tracker.gcVotes[gcId] = newVotes;
+        tracker.totalVotes -= oldVotes;
+        tracker.totalVotes += newVotes;
+
+        emit RefreshStake(trackerId, gcId, staking,
+                          newBalance, newGcBalance, newVotes, tracker.totalVotes);
+    }
+
+    function recalcAllVotesIfNeeded(uint256 trackerId, uint256 oldGcBalance, uint256 newGcBalance) internal {
+        Tracker storage tracker = trackers[trackerId];
+
+        bool wasEligible = oldGcBalance >= MIN_STAKE();
+        bool isEligible = newGcBalance >= MIN_STAKE();
         if (wasEligible != isEligible) {
             if (wasEligible) { // eligible -> not eligible
                 tracker.numEligible -= 1;
@@ -191,16 +209,6 @@ contract StakingTracker is IStakingTracker, Ownable {
             }
             recalcAllVotes(trackerId);
         }
-
-        // Update votes
-        uint256 oldVotes = tracker.gcVotes[gcId];
-        uint256 newVotes = calcVotes(tracker.numEligible, gcBalance);
-        tracker.gcVotes[gcId] = newVotes;
-        tracker.totalVotes -= oldVotes;
-        tracker.totalVotes += newVotes;
-
-        emit RefreshStake(trackerId, gcId, staking,
-                          newBalance, gcBalance, newVotes, tracker.totalVotes);
     }
 
     /// @dev Recalculate votes with new numEligible
